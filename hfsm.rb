@@ -162,7 +162,7 @@ class HFSMAddress < HFSMBase
 		if @machine!=other.machine and @machine!="*" and other.machine!="*"
 			return false
 		end
-		if @event!=other.event
+		if @event!=other.event and @event!="*" and other.event!="*"
 			return false
 		end
 		return true
@@ -525,46 +525,5 @@ def with
 end
 
 
-stage "Stage1" do
-	actor "Actor1" do
-		machine "Machine1" do
-		
-			state "Init" do
-				entry do
-					puts "Entered Init entry on Machine1"
-					signal "Event2", {"value"=>2}
-				end
-				
-				leave do
-					puts "Left Init state on Machine1"
-				end
-				
-				on "Event2" do
-					puts "Got Event2 on Machine1"
-					goto "State2"
-				end
-				
-			end
-			
-			state "State2" do
-				entry do
-					puts "MOved to state2"
-				end
-			end
-			
-		end
-		
-		machine "Machine2" do
-			state "Init" do
-				on "Actor1.Machine1.Event2", with {event.value==2} do
-					puts "caught Actor1.Machine1.Event2 in Machine2"
-				end
-				
-			end
-		end
-		
-	end	
-end
 
-$stage.execute
 
