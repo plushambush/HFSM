@@ -42,14 +42,6 @@ end
 #Объект который имеет имя (name)
 ####################################################################################################
 class HFSMObject < HFSMBase
-	attr_accessor :name
-	
-	def initialize(name)
-		super()
-		@name=name
-	end
-	
-
 end
 
 
@@ -99,13 +91,20 @@ end
 #Имеет родителя (parent) и элементы (elements), классы которых которые ограничены (allowed_elements)
 ####################################################################################################
 class HFSMDSL < HFSMObject
-	attr_reader :elements,:parent
+	attr_accessor :elements,:parent,:key
 
-	def initialize(name,parent)
-		super(name)
+	def initialize
+		super
+		@parent=nil
 		@elements=HFSMElements.new
-		@parent=parent
 		@allowed_elements=[]
+	end
+	
+	def debug_print(tab=0,key='')
+		puts "%s (Parent=%s)" % [(" "*tab+self.class.name()+ " " +key).ljust(60),@parent]
+		@elements.each do |k,v|
+			v.debug_print(tab+1,k)
+		end
 	end
 	
 	###########################################################################################
@@ -114,8 +113,8 @@ class HFSMDSL < HFSMObject
 	@@_defers=Hash.new
 
 	def self._defers
-		if @@_defers.has_key?(name)
-			return @@_defers[name]
+		if @@_defers.has_key?(name())
+			return @@_defers[name()]
 		else
 			nil
 		end
@@ -126,10 +125,10 @@ class HFSMDSL < HFSMObject
 	# нам приходится хранить процедуры инициализации в общем хэше, ключом к которому является имя класса
 	#
 	def self.deferred(&block)
-		if not @@_defers.has_key?(name)
-			@@_defers[name]=Array.new
+		if not @@_defers.has_key?(name())
+			@@_defers[name()]=Array.new
 		end
-		@@_defers[name] << block
+		@@_defers[name()] << block
 	end
 
 	# Производит инициализацию объекта target отложенными объектами данного класса
@@ -158,15 +157,22 @@ class HFSMDSL < HFSMObject
 	#Проверяем разрешено ли добавлять элемент (проверяем класс)
 	#ПРоверяем не дублируется ли имя элемента
 	################################################################################################
-	def addElement(name,element)
-		if not @allowed_elements.include?(element.class.name)
+	def addElement(key,element)
+		if not (@allowed_elements & element.class.ancestors)
 			raise HFSMException,"HFSM Error: Class %s is not allowed as element of %s. (Allowed:%s)" % [element.class.name,self.class.name,@allowed_elements]
 		end
-		if @elements.has_key?(name)
-			raise HFSMException, "HFSM Error: Duplicate object %s in %s %s" % [name,self.class.name,@name]
+		if @elements.has_key?(key)
+			raise HFSMException, "HFSM Error: Duplicate object %s in %s %s" % [key,self.class.name,self.key]
 		else
-			@elements[name]=element
+			@elements[key]=element
+			element.parent=self
+			element.key=key
 		end
+	end
+	
+	
+	def setup
+		@elements.each  { |k,v|	v.setup }
 	end
 	
 end
@@ -175,7 +181,7 @@ end
 #Класс, который хранит в себе группу Stage-Actor-Machine-Event и умеет их сравнивать с другими такими же группами
 ####################################################################################################
 class HFSMAddress < HFSMBase
-	attr_reader :stage,:actor,:machine,:event
+	attr_reader :stagename,:actorname,:machinename,:eventname
 
 	def initialize(stagename,actorname,machinename,longname)
 		super()
@@ -197,23 +203,23 @@ class HFSMAddress < HFSMBase
 	end
 	
 	def from_array!(ar)
-		@event=ar.pop()
-		@machine=ar.pop()
-		@actor=ar.pop()
-		@stage=ar.pop()
+		@eventname=ar.pop()
+		@machinename=ar.pop()
+		@actorname=ar.pop()
+		@stagename=ar.pop()
 	end
 	
 	def match?(other)
-		if @stage!=other.stage and @stage!="*" and other.stage!="*"
+		if @stagename!=other.stagename and @stagename!="*" and other.stagename!="*"
 			return false
 		end
-		if @actor!=other.actor and @actor!="*" and other.actor!="*"
+		if @actorname!=other.actorname and @actorname!="*" and other.actorname!="*"
 			return false
 		end
-		if @machine!=other.machine and @machine!="*" and other.machine!="*"
+		if @machinename!=other.machinename and @machinename!="*" and other.machinename!="*"
 			return false
 		end
-		if @event!=other.event and @event!="*" and other.event!="*"
+		if @eventname!=other.eventname and @eventname!="*" and other.eventname!="*"
 			return false
 		end
 		return true
@@ -221,14 +227,14 @@ class HFSMAddress < HFSMBase
 	end
 	
 	def fill_missing!(stagename,actorname,machinename)
-		if not @stage
-			@stage=stagename
+		if not @stagename
+			@stagename=stagename
 		end
-		if not @actor
-			@actor=actorname
+		if not @actorname
+			@actorname=actorname
 		end
-		if not @machine
-			@machine=machinename
+		if not @machinename
+			@machinename=machinename
 		end
 	end
 	
@@ -242,7 +248,7 @@ class HFSMEvent < HFSMObject
 	attr_reader :from, :to
 
 	def initialize(stagename,actorname, machinename, longname,payload=Hash.new)
-		super(longname)
+		super()
 		@payload=payload
 		@from=HFSMAddress.new(stagename,actorname,machinename,"")
 		@to=HFSMAddress.new(stagename,actorname,machinename,longname)
@@ -264,6 +270,10 @@ class HFSMEvent < HFSMObject
 		end
 	end
 	
+	def name
+		return @to.to_longname
+	end
+	
 end
 
 
@@ -272,14 +282,13 @@ end
 # Объект, обслуживаюший очередь сообщений и раздающий их Actor'ам
 ####################################################################################################
 class HFSMStage < HFSMDSL
-	def initialize(name=nil,parent=nil)
-		super(name,parent)			
-		@allowed_elements=["HFSMActor"]
+	def initialize(name)
+		super()
+		@key=name
+		@allowed_elements=[HFSMActor]
 		@queue=HFSMQueue.new
 		@subscribers=[]
 		createDefers
-
-		
 	end
 
 
@@ -306,10 +315,6 @@ class HFSMStage < HFSMDSL
 		end
 	end
 	
-	def setup
-		@elements.values.each {|el| el.setup}
-	end
-	
 	def subscribe(address,handler)
 		puts "Subscribing %s to %s" % [address.to_longname,handler]
 		@subscribers << HFSMSubscription.new(address,handler)
@@ -319,11 +324,18 @@ class HFSMStage < HFSMDSL
 		@subscribers.each {|sub| sub.handler.try_handle(event)}
 	end
 	
-	def self.actor(name, &block)
+	def self.actor(key, supplied=HFSMActor, &block)
 		deferred do
-			obj=HFSMActor.new(name,self)
-			obj.instance_eval(&block)
-			self.addElement(name,obj)
+			if supplied.class==Class
+				obj=supplied.new
+			else
+				obj=supplied
+			end
+			self.addElement(key,obj)
+			if block
+				obj.instance_eval(&block)
+			end
+			
 		end
 	end
 
@@ -331,9 +343,10 @@ end
 
 
 class HFSMActor < HFSMDSL
-	def initialize(name,parent)
-		super(name,parent)
-		@allowed_elements=["HFSMMachine"]
+	def initialize
+		super
+		@allowed_elements=[HFSMMachine]
+		createDefers
 	end
 	
 	def stage
@@ -346,17 +359,19 @@ class HFSMActor < HFSMDSL
 	
 	
 	def dispatch(event)
-		puts "Dispatching %s to actor %s" % [event.name,@name]
+		puts "Dispatching %s to actor %s" % [event.name,@key]
 	end
 	
-	def setup
-		@elements.values.each { |el| el.setup }
+	def self.machine(key,&block)
+		deferred do
+			machine(key,&block)
+		end
 	end
 
-	def machine(name, &block)
-		obj=HFSMMachine.new(name,self)
-		obj.instance_eval(&block)
-		self.addElement(name,obj)
+	def machine(key, &block)
+		obj=HFSMMachine.new
+		self.addElement(key,obj)
+		obj.instance_eval(&block)		
 	end
 	
 	
@@ -366,9 +381,9 @@ class HFSMMachine < HFSMDSL
 
 	attr_reader :current_state
 	
-	def initialize(name,parent)
-		super(name,parent)
-		@allowed_elements=["HFSMState"]
+	def initialize
+		super
+		@allowed_elements=[HFSMState]
 	end
 
 	def stage
@@ -385,6 +400,7 @@ class HFSMMachine < HFSMDSL
 
 	
 	def setup
+		super
 		reset
 	end
 	
@@ -400,14 +416,14 @@ class HFSMMachine < HFSMDSL
 			@current_state=@elements[statename]
 			@current_state.enter_state()
 		else
-			raise HFSMStateException,"HFSM Error: Unknown state %s in machine %s of %s" % [statename,@name,@parent.name]
+			raise HFSMStateException,"HFSM Error: Unknown state %s in machine %s of %s" % [statename,@key,@parent.key]
 		end
 	end
 	
-	def state(name, &block)
-		obj=HFSMState.new(name,self)
-		obj.instance_eval(&block)
-		self.addElement(name,obj)
+	def state(key, &block)
+		obj=HFSMState.new
+		self.addElement(key,obj)
+		obj.instance_eval(&block)		
 	end
 
 	
@@ -415,9 +431,9 @@ end
 	
 class HFSMState < HFSMDSL
 
-	def initialize(name,parent)
-		super(name,parent)
-		@allowed_elements=["HFSMHandler"]
+	def initialize
+		super
+		@allowed_elements=[HFSMHandler]
 		@enrty=nil
 		@leave=nil
 	end
@@ -448,14 +464,14 @@ class HFSMState < HFSMDSL
 	
 	def enter_state
 		if @entry
-			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.name,actor.name,machine.name,""))
+			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.key,actor.key,machine.key,""))
 			context.instance_eval(&@entry)
 		end
 	end
 	
 	def leave_state
 		if @leave
-			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.name,actor.name,machine.name,""))
+			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.key,actor.key,machine.key,""))
 			context.instance_eval(&@leave)
 		end
 	end
@@ -468,10 +484,9 @@ class HFSMState < HFSMDSL
 		self.setLeave(&block)
 	end
 	
-	def on(name,expr=nil,&block)
-		obj=HFSMHandler.new(name,self,expr,&block)
-		self.addElement(name,obj)
-		obj.subscribe_to_events(name)
+	def on(eventname,expr=nil,&block)
+		obj=HFSMHandler.new(eventname,expr,&block)
+		self.addElement(eventname,obj)
 	end
 
 	def with
@@ -482,13 +497,14 @@ end
 
 class HFSMHandler < HFSMDSL
 
-	def initialize(longname,parent,expr,&block)
-		super(longname,parent)
+	def initialize(longname,expr,&block)
+		super()
+		@longname=longname
 		@expr=expr
 		@block=block
 		@allowed_elements=[]
-		@addressmatch=HFSMAddress.new(stage.name,actor.name,machine.name,longname)
 	end
+
 
 	def stage
 		@parent.stage
@@ -506,8 +522,12 @@ class HFSMHandler < HFSMDSL
 		@parent
 	end
 	
+	def addressmatch
+			HFSMAddress.new(stage.key,actor.key,machine.key,@longname)
+	end
+	
 	def match_context?(context)
-		if @addressmatch.match?(context.event.to)
+		if addressmatch.match?(context.event.to)
 			begin
 				return context.instance_eval(&@expr)
 			rescue NoMethodError
@@ -522,7 +542,7 @@ class HFSMHandler < HFSMDSL
 	end 
 	
 	def try_handle(event)
-		if state.name==machine.current_state.name
+		if state.key==machine.current_state.key
 			context=HFSMContext.new(stage,actor,machine,event)
 			if match_context?(context)
 				execute(context)
@@ -536,8 +556,11 @@ class HFSMHandler < HFSMDSL
 		context.instance_eval(&@block)
 	end
 	
-	def subscribe_to_events(longname)
-		address=HFSMAddress.new(stage.name,actor.name,machine.name,longname)
+	def setup
+		subscribe_to_events(addressmatch)
+	end
+	
+	def subscribe_to_events(address)
 		stage.subscribe(address,self)
 	end
 	
@@ -558,13 +581,13 @@ class HFSMContext < HFSMBase
 		@machine.change_state(statename)
 	end
 	
-	def signal(name,payload=Hash.new)
-		event=HFSMEvent.new(@stage.name,@actor.name,@machine.name,name,payload)
+	def signal(longname,payload=Hash.new)
+		event=HFSMEvent.new(@stage.key,@actor.key,@machine.key,longname,payload)
 		@actor.parent.post(event)
 	end
 	
-	def reply(name,payload=Hash.new)
-		event=HFSMEvent.new(@event.from.stage,@event.from.actor,@event.from.machine,name,payload)
+	def reply(shortname,payload=Hash.new)
+		event=HFSMEvent.new(@event.from.stagename,@event.from.actorname,@event.from.machinename,shortname,payload)
 		@actor.parent.post(event)
 	end
 	
@@ -573,11 +596,11 @@ class HFSMContext < HFSMBase
 	end
 	
 	def actor
-		@actor.name
+		@actor.key
 	end
 	
 	def machine
-		@machine.name
+		@machine.key
 	end
 	
 	def event

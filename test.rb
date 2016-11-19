@@ -1,7 +1,7 @@
 load "hfsm.rb"
-class TestStage < HFSMStage
-	actor "TestSender" do
-		machine "TestSenderMachine" do
+
+class TestSender < HFSMActor
+	machine "TestSenderMachine" do
 		
 			state "Init" do
 				entry do
@@ -114,6 +114,10 @@ class TestStage < HFSMStage
 			end
 		end
 	end
+
+
+class TestStage < HFSMStage
+	actor "TestSender",TestSender.new
 	actor "TestReceiver" do
 		machine "TestReceiverMachine" do
 			state "Init" do
@@ -132,4 +136,5 @@ class TestStage < HFSMStage
 end
 
 test=TestStage.new("TestStage")
+test.debug_print
 test.execute
