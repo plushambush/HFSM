@@ -1,5 +1,5 @@
 load "hfsm.rb"
-stage "TestStage" do
+class TestStage < HFSMStage
 	actor "TestSender" do
 		machine "TestSenderMachine" do
 		
@@ -131,4 +131,5 @@ stage "TestStage" do
 	end
 end
 
-$stage.execute
+test=TestStage.new("TestStage")
+test.execute

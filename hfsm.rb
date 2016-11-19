@@ -108,6 +108,50 @@ class HFSMDSL < HFSMObject
 		@allowed_elements=[]
 	end
 	
+	###########################################################################################
+	# Методы для отложенной инициализации инстанса
+	###########################################################################################
+	@@_defers=Hash.new
+
+	def self._defers
+		if @@_defers.has_key?(name)
+			return @@_defers[name]
+		else
+			nil
+		end
+	end
+
+	# Добавляем процедуру отложенной инициализации в список
+	# Поскольку все изменения, которые делают в классовых переменных потомки, производятся в базовом классе
+	# нам приходится хранить процедуры инициализации в общем хэше, ключом к которому является имя класса
+	#
+	def self.deferred(&block)
+		if not @@_defers.has_key?(name)
+			@@_defers[name]=Array.new
+		end
+		@@_defers[name] << block
+	end
+
+	# Производит инициализацию объекта target отложенными объектами данного класса
+	def self.createMyDefersIn(target)
+		if _defers
+			_defers.each do |block|
+				target.instance_eval(&block)
+			end
+		end
+	end
+	# Отложенная Инициализация. Пробегаем по всем родителям класса, которые поддерживают отложенную инициализацию,
+	# и инициализируем их
+	def createDefers
+		self.class.ancestors.reverse.each do |ancestor|
+			if ancestor.methods.include? :createMyDefersIn
+				ancestor.createMyDefersIn(self)
+			end
+		end
+	end
+
+	
+
 
 	################################################################################################
 	#Добавление нового элемента к elements
@@ -228,11 +272,14 @@ end
 # Объект, обслуживаюший очередь сообщений и раздающий их Actor'ам
 ####################################################################################################
 class HFSMStage < HFSMDSL
-	def initialize(name,parent)
-		super(name,parent)
+	def initialize(name=nil,parent=nil)
+		super(name,parent)			
 		@allowed_elements=["HFSMActor"]
 		@queue=HFSMQueue.new
 		@subscribers=[]
+		createDefers
+
+		
 	end
 
 
@@ -272,10 +319,12 @@ class HFSMStage < HFSMDSL
 		@subscribers.each {|sub| sub.handler.try_handle(event)}
 	end
 	
-	def actor(name, &block)
-		obj=HFSMActor.new(name,self)
-		obj.instance_eval(&block)
-		self.addElement(name,obj)
+	def self.actor(name, &block)
+		deferred do
+			obj=HFSMActor.new(name,self)
+			obj.instance_eval(&block)
+			self.addElement(name,obj)
+		end
 	end
 
 end
@@ -534,16 +583,6 @@ class HFSMContext < HFSMBase
 	def event
 		@event
 	end
-end
-
-
-
-# DSL constructors	
-
-
-def stage(name,&block)
-	$stage=HFSMStage.new(name,nil)
-	$stage.instance_eval(&block)
 end
 
 
