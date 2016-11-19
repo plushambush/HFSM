@@ -224,7 +224,8 @@ class HFSMStage < HFSMDSL
 		@queue=HFSMQueue.new
 		@subscribers=[]
 	end
-	
+
+
 	def stage
 		self
 	end
@@ -260,6 +261,13 @@ class HFSMStage < HFSMDSL
 	def dispatch(event)
 		@subscribers.each {|sub| sub.handler.try_handle(event)}
 	end
+	
+	def actor(name, &block)
+		obj=HFSMActor.new(name,self)
+		obj.instance_eval(&block)
+		self.addElement(name,obj)
+	end
+
 end
 
 
@@ -285,6 +293,14 @@ class HFSMActor < HFSMDSL
 	def setup
 		@elements.values.each { |el| el.setup }
 	end
+
+	def machine(name, &block)
+		obj=HFSMMachine.new(name,self)
+		obj.instance_eval(&block)
+		self.addElement(name,obj)
+	end
+	
+	
 end
 
 class HFSMMachine < HFSMDSL
@@ -320,14 +336,21 @@ class HFSMMachine < HFSMDSL
 	def change_state(statename,leave_previous=true)
 		if @elements.has_key?(statename)
 			if leave_previous and @current_state
-				@current_state.leave()
+				@current_state.leave_state()
 			end
 			@current_state=@elements[statename]
-			@current_state.enter()
+			@current_state.enter_state()
 		else
 			raise HFSMStateException,"HFSM Error: Unknown state %s in machine %s of %s" % [statename,@name,@parent.name]
 		end
 	end
+	
+	def state(name, &block)
+		obj=HFSMState.new(name,self)
+		obj.instance_eval(&block)
+		self.addElement(name,obj)
+	end
+
 	
 end
 	
@@ -364,19 +387,38 @@ class HFSMState < HFSMDSL
 		self
 	end
 	
-	def enter
+	def enter_state
 		if @entry
 			context=HFSMContext.new(actor,machine,HFSMEvent.new(actor.name,machine.name,""))
 			context.instance_eval(&@entry)
 		end
 	end
 	
-	def leave
+	def leave_state
 		if @leave
 			context=HFSMContext.new(actor,machine,HFSMEvent.new(actor.name,machine.name,""))
 			context.instance_eval(&@leave)
 		end
 	end
+	
+	def entry(&block)
+		self.setEntry(&block)
+	end
+
+	def leave(&block)
+		self.setLeave(&block)
+	end
+	
+	def on(name,expr=nil,&block)
+		obj=HFSMHandler.new(name,self,expr,&block)
+		self.addElement(name,obj)
+		obj.subscribe_to_events(name)
+	end
+
+	def with
+		Proc.new
+	end
+	
 end
 
 class HFSMHandler < HFSMDSL
@@ -488,41 +530,11 @@ def stage(name,&block)
 	$stage.instance_eval(&block)
 end
 
-def actor(name, &block)
-	obj=HFSMActor.new(name,self)
-	obj.instance_eval(&block)
-	self.addElement(name,obj)
-end
 
-def machine(name, &block)
-	obj=HFSMMachine.new(name,self)
-	obj.instance_eval(&block)
-	self.addElement(name,obj)
-end
 
-def state(name, &block)
-	obj=HFSMState.new(name,self)
-	obj.instance_eval(&block)
-	self.addElement(name,obj)
-end
 
-def on(name,expr=nil,&block)
-	obj=HFSMHandler.new(name,self,expr,&block)
-	self.addElement(name,obj)
-	obj.subscribe_to_events(name)
-end
 
-def entry(&block)
-	self.setEntry(&block)
-end
 
-def leave(&block)
-	self.setLeave(&block)
-end
-
-def with
-	Proc.new
-end
 
 
 
