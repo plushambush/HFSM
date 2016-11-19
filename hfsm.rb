@@ -1,5 +1,8 @@
 require 'thread'
 require 'pry'
+require 'byebug'
+require 'pp'
+
 
 InitStateName="Init"
 
@@ -125,15 +128,15 @@ class HFSMDSL < HFSMObject
 end
 
 ####################################################################################################
-# ласс, который хранит в себе группу Actor-Machine-Event и умеет их сравнивать с другими такими же группами
+# ласс, который хранит в себе группу Stage-Actor-Machine-Event и умеет их сравнивать с другими такими же группами
 ####################################################################################################
 class HFSMAddress < HFSMBase
-	attr_reader :actor,:machine,:event
+	attr_reader :stage,:actor,:machine,:event
 
-	def initialize(actorname,machinename,longname)
+	def initialize(stagename,actorname,machinename,longname)
 		super()
 		from_longname!(longname)
-		fill_missing!(actorname,machinename)
+		fill_missing!(stagename,actorname,machinename)
 	end	
 	
 	def from_longname!(longname)
@@ -142,20 +145,24 @@ class HFSMAddress < HFSMBase
 	end
 	
 	def to_longname
-		return [@actorname,@machinename,@eventname].join(".")
+		return [@stagename,@actorname,@machinename,@eventname].join(".")
 	end
 	
 	def to_array
-		return [@actorname,@machinename,@eventname]
+		return [@stagename,@actorname,@machinename,@eventname]
 	end
 	
 	def from_array!(ar)
 		@event=ar.pop()
 		@machine=ar.pop()
 		@actor=ar.pop()
+		@stage=ar.pop()
 	end
 	
 	def match?(other)
+		if @stage!=other.stage and @stage!="*" and other.stage!="*"
+			return false
+		end
 		if @actor!=other.actor and @actor!="*" and other.actor!="*"
 			return false
 		end
@@ -169,7 +176,10 @@ class HFSMAddress < HFSMBase
 	
 	end
 	
-	def fill_missing!(actorname,machinename)
+	def fill_missing!(stagename,actorname,machinename)
+		if not @stage
+			@stage=stagename
+		end
 		if not @actor
 			@actor=actorname
 		end
@@ -187,11 +197,11 @@ class HFSMEvent < HFSMObject
 
 	attr_reader :from, :to
 
-	def initialize(actorname, machinename, longname,payload=Hash.new)
+	def initialize(stagename,actorname, machinename, longname,payload=Hash.new)
 		super(longname)
 		@payload=payload
-		@from=HFSMAddress.new(actorname,machinename,"")
-		@to=HFSMAddress.new(actorname,machinename,longname)
+		@from=HFSMAddress.new(stagename,actorname,machinename,"")
+		@to=HFSMAddress.new(stagename,actorname,machinename,longname)
 	end
 	
 	def method_missing(method_sym,arg=nil)
@@ -389,14 +399,14 @@ class HFSMState < HFSMDSL
 	
 	def enter_state
 		if @entry
-			context=HFSMContext.new(actor,machine,HFSMEvent.new(actor.name,machine.name,""))
+			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.name,actor.name,machine.name,""))
 			context.instance_eval(&@entry)
 		end
 	end
 	
 	def leave_state
 		if @leave
-			context=HFSMContext.new(actor,machine,HFSMEvent.new(actor.name,machine.name,""))
+			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.name,actor.name,machine.name,""))
 			context.instance_eval(&@leave)
 		end
 	end
@@ -428,7 +438,7 @@ class HFSMHandler < HFSMDSL
 		@expr=expr
 		@block=block
 		@allowed_elements=[]
-		@addressmatch=HFSMAddress.new(actor.name,machine.name,longname)
+		@addressmatch=HFSMAddress.new(stage.name,actor.name,machine.name,longname)
 	end
 
 	def stage
@@ -464,7 +474,7 @@ class HFSMHandler < HFSMDSL
 	
 	def try_handle(event)
 		if state.name==machine.current_state.name
-			context=HFSMContext.new(actor,machine,event)
+			context=HFSMContext.new(stage,actor,machine,event)
 			if match_context?(context)
 				execute(context)
 			end
@@ -478,7 +488,7 @@ class HFSMHandler < HFSMDSL
 	end
 	
 	def subscribe_to_events(longname)
-		address=HFSMAddress.new(actor.name,machine.name,longname)
+		address=HFSMAddress.new(stage.name,actor.name,machine.name,longname)
 		stage.subscribe(address,self)
 	end
 	
@@ -488,7 +498,8 @@ end
 #  онтекст, в котором выполн€ютс€ обработчики событий и провер€ютс€ услови€ 'with'
 ####################################################################################################
 class HFSMContext < HFSMBase
-	def initialize(actor,machine,event)
+	def initialize(stage,actor,machine,event)
+		@stage=stage
 		@actor=actor
 		@machine=machine
 		@event=event
@@ -499,7 +510,12 @@ class HFSMContext < HFSMBase
 	end
 	
 	def signal(name,payload=Hash.new)
-		event=HFSMEvent.new(@actor.name,@machine.name,name,payload)
+		event=HFSMEvent.new(@stage.name,@actor.name,@machine.name,name,payload)
+		@actor.parent.post(event)
+	end
+	
+	def reply(name,payload=Hash.new)
+		event=HFSMEvent.new(@event.from.stage,@event.from.actor,@event.from.machine,name,payload)
 		@actor.parent.post(event)
 	end
 	
