@@ -77,13 +77,14 @@ end
 #Имеет родителя (parent) и элементы (elements), классы которых которые ограничены (allowed_elements)
 ####################################################################################################
 class HFSMDSL < HFSMObject
+	@@allowed_elements=[]
+	
 	attr_accessor :elements,:parent,:key
 
 	def initialize
 		super
 		@parent=nil
 		@elements={}
-		@allowed_elements=[]
 	end
 	
 	def debug_print(tab=0,key='')
@@ -144,8 +145,8 @@ class HFSMDSL < HFSMObject
 	#ПРоверяем не дублируется ли имя элемента
 	################################################################################################
 	def addElement(key,element)
-		if not (@allowed_elements & element.class.ancestors)
-			raise HFSMException,"HFSM Error: Class %s is not allowed as element of %s. (Allowed:%s)" % [element.class.name,self.class.name,@allowed_elements]
+		if not (@@allowed_elements & element.class.ancestors)
+			raise HFSMException,"HFSM Error: Class %s is not allowed as element of %s. (Allowed:%s)" % [element.class.name,self.class.name,@@allowed_elements]
 		end
 		if @elements.has_key?(key)
 			raise HFSMException, "HFSM Error: Duplicate object %s in %s %s" % [key,self.class.name,self.key]
@@ -263,232 +264,15 @@ class HFSMEvent < HFSMObject
 end
 
 
-
-####################################################################################################
-# Объект, обслуживаюший очередь сообщений и раздающий их Actor'ам
-####################################################################################################
-class HFSMStage < HFSMDSL
-	def initialize(name)
-		super()
-		@key=name
-		@allowed_elements=[HFSMActor]
-		@queue=HFSMQueue.new
-		@subscribers=[]
-		createDefers
-	end
-
-
-	def stage
-		self
-	end
-	
-	def post(event)
-		puts "Posting event %s" % [event.name]
-		@queue.put(event)
-	end
-	
-	def execute
-		setup
-		process_queue
-	end
-	
-	def process_queue
-		while true
-			event=@queue.get()
-			if event
-				dispatch(event)
-			end
-		end
-	end
-	
-	def subscribe(address,handler)
-		puts "Subscribing %s to %s" % [address.to_longname,handler]
-		@subscribers << HFSMSubscription.new(address,handler)
-	end
-	
-	def dispatch(event)
-		@subscribers.each {|sub| sub.handler.try_handle(event)}
-	end
-	
-	def self.actor(key, supplied=HFSMActor, &block)
-		deferred do
-			if supplied.class==Class
-				obj=supplied.new
-			else
-				obj=supplied
-			end
-			self.addElement(key,obj)
-			if block
-				obj.instance_eval(&block)
-			end
-			
-		end
-	end
-
-end
-
-
-class HFSMActor < HFSMDSL
-	def initialize
-		super
-		@allowed_elements=[HFSMMachine]
-		createDefers
-	end
-	
-	def stage
-		@parent.stage
-	end
-	
-	def actor
-		self
-	end
-	
-	
-	def dispatch(event)
-		puts "Dispatching %s to actor %s" % [event.name,@key]
-	end
-	
-	def self.machine(key,&block)
-		deferred do
-			machine(key,&block)
-		end
-	end
-
-	def machine(key, &block)
-		obj=HFSMMachine.new
-		self.addElement(key,obj)
-		obj.instance_eval(&block)		
-	end
-	
-	
-end
-
-class HFSMMachine < HFSMDSL
-
-	attr_reader :current_state
-	
-	def initialize
-		super
-		@allowed_elements=[HFSMState]
-	end
-
-	def stage
-		@parent.stage
-	end
-	
-	def actor
-		@parent.actor
-	end
-	
-	def machine
-		self
-	end
-
-	
-	def setup
-		super
-		reset
-	end
-	
-	def reset
-		change_state(InitStateName,false)
-	end
-	
-	def change_state(statename,leave_previous=true)
-		if @elements.has_key?(statename)
-			if leave_previous and @current_state
-				@current_state.leave_state()
-			end
-			@current_state=@elements[statename]
-			@current_state.enter_state()
-		else
-			raise HFSMStateException,"HFSM Error: Unknown state %s in machine %s of %s" % [statename,@key,@parent.key]
-		end
-	end
-	
-	def state(key, &block)
-		obj=HFSMState.new
-		self.addElement(key,obj)
-		obj.instance_eval(&block)		
-	end
-
-	
-end
-	
-class HFSMState < HFSMDSL
-
-	def initialize
-		super
-		@allowed_elements=[HFSMHandler]
-		@enrty=nil
-		@leave=nil
-	end
-	
-	def setEntry(&block)
-		@entry=block
-	end
-	
-	def setLeave(&block)
-		@leave=block
-	end
-	
-	def stage
-		@parent.stage
-	end
-	
-	def actor
-		@parent.actor
-	end
-	
-	def machine
-		@parent
-	end
-	
-	def state
-		self
-	end
-	
-	def enter_state
-		if @entry
-			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.key,actor.key,machine.key,""))
-			context.instance_eval(&@entry)
-		end
-	end
-	
-	def leave_state
-		if @leave
-			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.key,actor.key,machine.key,""))
-			context.instance_eval(&@leave)
-		end
-	end
-	
-	def entry(&block)
-		self.setEntry(&block)
-	end
-
-	def leave(&block)
-		self.setLeave(&block)
-	end
-	
-	def on(eventname,expr=nil,&block)
-		obj=HFSMHandler.new(eventname,expr,&block)
-		self.addElement(eventname,obj)
-	end
-
-	def with
-		Proc.new
-	end
-	
-end
-
 class HFSMHandler < HFSMDSL
-
+	@@allowed_elements=[]
+	
 	def initialize(longname,expr,&block)
 		super()
 		@longname=longname
 		@expr=expr
 		@block=block
-		@allowed_elements=[]
+
 	end
 
 
@@ -551,6 +335,232 @@ class HFSMHandler < HFSMDSL
 	end
 	
 end	
+
+
+
+class HFSMState < HFSMDSL
+	@@allowed_elements=[HFSMHandler]
+	
+	def initialize
+		super
+
+		@enrty=nil
+		@leave=nil
+	end
+	
+	def setEntry(&block)
+		@entry=block
+	end
+	
+	def setLeave(&block)
+		@leave=block
+	end
+	
+	def stage
+		@parent.stage
+	end
+	
+	def actor
+		@parent.actor
+	end
+	
+	def machine
+		@parent
+	end
+	
+	def state
+		self
+	end
+	
+	def enter_state
+		if @entry
+			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.key,actor.key,machine.key,""))
+			context.instance_eval(&@entry)
+		end
+	end
+	
+	def leave_state
+		if @leave
+			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.key,actor.key,machine.key,""))
+			context.instance_eval(&@leave)
+		end
+	end
+	
+	def entry(&block)
+		self.setEntry(&block)
+	end
+
+	def leave(&block)
+		self.setLeave(&block)
+	end
+	
+	def on(eventname,expr=nil,&block)
+		obj=HFSMHandler.new(eventname,expr,&block)
+		self.addElement(eventname,obj)
+	end
+
+	def with
+		Proc.new
+	end
+	
+end
+
+
+
+class HFSMMachine < HFSMDSL
+	@@allowed_elements=[HFSMState]
+	attr_reader :current_state
+	
+	def initialize
+		super
+
+	end
+
+	def stage
+		@parent.stage
+	end
+	
+	def actor
+		@parent.actor
+	end
+	
+	def machine
+		self
+	end
+
+	
+	def setup
+		super
+		reset
+	end
+	
+	def reset
+		change_state(InitStateName,false)
+	end
+	
+	def change_state(statename,leave_previous=true)
+		if @elements.has_key?(statename)
+			if leave_previous and @current_state
+				@current_state.leave_state()
+			end
+			@current_state=@elements[statename]
+			@current_state.enter_state()
+		else
+			raise HFSMStateException,"HFSM Error: Unknown state %s in machine %s of %s" % [statename,@key,@parent.key]
+		end
+	end
+	
+	def state(key, &block)
+		obj=HFSMState.new
+		self.addElement(key,obj)
+		obj.instance_eval(&block)		
+	end
+	
+end
+
+
+class HFSMActor < HFSMDSL
+	@@allowed_elements=[HFSMMachine]
+	
+	def initialize
+		super
+		createDefers
+	end
+	
+	def stage
+		@parent.stage
+	end
+	
+	def actor
+		self
+	end
+	
+	
+	def dispatch(event)
+		puts "Dispatching %s to actor %s" % [event.name,@key]
+	end
+	
+	def self.machine(key,&block)
+		deferred do
+			machine(key,&block)
+		end
+	end
+
+	def machine(key, &block)
+		obj=HFSMMachine.new
+		self.addElement(key,obj)
+		obj.instance_eval(&block)		
+	end
+	
+	
+end
+
+
+####################################################################################################
+# Объект, обслуживаюший очередь сообщений и раздающий их Actor'ам
+####################################################################################################
+class HFSMStage < HFSMDSL
+	@@allowed_elements=[HFSMActor]
+	
+	def initialize(name)
+		super()
+		@key=name
+		@queue=HFSMQueue.new
+		@subscribers=[]
+		createDefers
+	end
+
+
+	def stage
+		self
+	end
+	
+	def post(event)
+		puts "Posting event %s" % [event.name]
+		@queue.put(event)
+	end
+	
+	def execute
+		setup
+		process_queue
+	end
+	
+	def process_queue
+		while true
+			event=@queue.get()
+			if event
+				dispatch(event)
+			end
+		end
+	end
+	
+	def subscribe(address,handler)
+		puts "Subscribing %s to %s" % [address.to_longname,handler]
+		@subscribers << HFSMSubscription.new(address,handler)
+	end
+	
+	def dispatch(event)
+		@subscribers.each {|sub| sub.handler.try_handle(event)}
+	end
+	
+	def self.actor(key, supplied=HFSMActor, &block)
+		deferred do
+			if supplied.class==Class
+				obj=supplied.new
+			else
+				obj=supplied
+			end
+			self.addElement(key,obj)
+			if block
+				obj.instance_eval(&block)
+			end
+			
+		end
+	end
+
+end
+
+	
 
 ####################################################################################################
 # Контекст, в котором выполняются обработчики событий и проверяются условия 'with'
