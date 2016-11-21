@@ -40,15 +40,23 @@ class HFSMBase
 end
 
 ####################################################################################################
-#Объект который имеет имя (name)
+#Объект который имеет имя (label)
 ####################################################################################################
 class HFSMObject < HFSMBase
+	attr_accessor :label
+
+	def initialize(label='')
+		super()
+		@label=label
+	end
 end
 
-
+####################################################################################################
+#Объект, содержащий в себе данные подписки handler на address
+####################################################################################################
 
 class HFSMSubscription < HFSMBase
-	attr_reader :comps,:handler
+	attr_reader :address,:handler
 
 	def initialize(address,handler)
 		super()
@@ -57,9 +65,13 @@ class HFSMSubscription < HFSMBase
 	end
 end
 
+####################################################################################################
+#Очередь событий
+####################################################################################################
 
 class HFSMQueue < HFSMBase
 	def initialize()
+		super()  
 		@queue=[]
 	end
 	
@@ -338,7 +350,7 @@ class HFSMState < HFSMDSL
 	@@allowed_elements=[HFSMHandler]
 	
 	def initialize
-		super
+		super()
 
 		@enrty=nil
 		@leave=nil
