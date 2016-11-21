@@ -32,6 +32,10 @@ end
 
 class HFSMUnknownEventException < HFSMHandlerException
 end
+
+class HFSMActorException < HFSMException
+end
+
 ####################################################################################################
 #Базовый объект для всей HFSM
 ####################################################################################################
@@ -570,7 +574,7 @@ class HFSMStage < HFSMDSL
 			if supplied.class==Class
 				obj=supplied.new
 			else
-				obj=supplied
+				raise HFSMException,"HFSM Error: Instantiated class %s in deferred constructor" % [supplied]
 			end
 			self.addElement(key,obj)
 			if block

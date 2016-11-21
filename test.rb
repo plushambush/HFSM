@@ -118,7 +118,7 @@ class TestSender < HFSMActor
 
 
 class TestStage < HFSMStage
-	actor "TestSender",TestSender.new
+	actor "TestSender",TestSender
 	actor "TestReceiver" do
 		machine "TestReceiverMachine" do
 			state "Init" do
