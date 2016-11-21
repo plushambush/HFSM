@@ -45,20 +45,6 @@ class HFSMObject < HFSMBase
 end
 
 
-class HFSMElements < Hash
-	def values_of_match(value)
-		if value=="*"
-			return values
-		else
-			if keys.include?(value)
-				return [self[key]]
-			else
-				return []
-			end
-		end
-	end
-end
-
 
 class HFSMSubscription < HFSMBase
 	attr_reader :comps,:handler
@@ -96,7 +82,7 @@ class HFSMDSL < HFSMObject
 	def initialize
 		super
 		@parent=nil
-		@elements=HFSMElements.new
+		@elements={}
 		@allowed_elements=[]
 	end
 	
