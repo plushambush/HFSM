@@ -90,14 +90,16 @@ end
 #Имеет родителя (parent) и элементы (elements), классы которых которые ограничены (allowed_elements)
 ####################################################################################################
 class HFSMDSL < HFSMObject
-	@@allowed_elements=[]
+
 	
-	attr_accessor :elements,:parent,:key
+	attr_accessor :elements,:parent,:key,:group
 
 	def initialize
-		super
+		super()
+		@allowed_elements=[]
 		@parent=nil
 		@elements={}
+		@group=:@elements
 	end
 	
 	def debug_print(tab=0,key='')
@@ -150,15 +152,14 @@ class HFSMDSL < HFSMObject
 	#ПРоверяем не дублируется ли имя элемента
 	################################################################################################
 	def addElement(key,element)
-		if not (@@allowed_elements & element.class.ancestors)
-			raise HFSMException,"HFSM Error: Class %s is not allowed as element of %s. (Allowed:%s)" % [element.class.name,self.class.name,@@allowed_elements]
+		if not (@allowed_elements & element.class.ancestors)
+			raise HFSMException,"HFSM Error: Class %s is not allowed as element of %s. (Allowed:%s)" % [element.class.name,self.class.name,@allowed_elements]
 		end
-		if @elements.has_key?(key)
-			raise HFSMException, "HFSM Error: Duplicate object %s in %s %s" % [key,self.class.name,self.key]
-		else
-			@elements[key]=element
-			element.addedTo(self,key)
+		if not self.instance_variable_defined?(element.group)
+			self.instance_variable_set(element.group,Hash.new)
 		end
+		self.instance_variable_get(element.group)[key]=element
+		element.addedTo(self,key)
 	end
 	
 	def addedTo(parent,key)
@@ -273,7 +274,6 @@ end
 
 
 class HFSMHandler < HFSMDSL
-	@@allowed_elements=[]
 	
 	def initialize(longname,expr,&block)
 		super()
@@ -347,11 +347,11 @@ end
 
 
 class HFSMState < HFSMDSL
-	@@allowed_elements=[HFSMHandler]
+
 	
 	def initialize
 		super()
-
+		@allowed_elements=[HFSMHandler]
 		@enrty=nil
 		@leave=nil
 	end
@@ -416,11 +416,12 @@ end
 
 
 class HFSMMachine < HFSMDSL
-	@@allowed_elements=[HFSMState]
+
 	attr_reader :current_state
 	
 	def initialize
-		super
+		super()
+		@allowed_elements=[HFSMState]
 
 	end
 
@@ -468,10 +469,11 @@ end
 
 
 class HFSMActor < HFSMDSL
-	@@allowed_elements=[HFSMMachine]
+
 	
 	def initialize
 		super
+		@allowed_elements=[HFSMMachine]
 		createDefers
 	end
 	
@@ -508,10 +510,11 @@ end
 # Объект, обслуживаюший очередь сообщений и раздающий их Actor'ам
 ####################################################################################################
 class HFSMStage < HFSMDSL
-	@@allowed_elements=[HFSMActor]
+
 	
 	def initialize(name)
 		super()
+		@allowed_elements=[HFSMActor]
 		@key=name
 		@queue=HFSMQueue.new
 		@subscribers=[]
