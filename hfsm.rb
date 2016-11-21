@@ -36,6 +36,7 @@ end
 #Базовый объект для всей HFSM
 ####################################################################################################
 class HFSMBase
+
 end
 
 ####################################################################################################
@@ -97,15 +98,7 @@ class HFSMDSL < HFSMObject
 	###########################################################################################
 	# Методы для отложенной инициализации инстанса
 	###########################################################################################
-	@@_defers=Hash.new
-
-	def self._defers
-		if @@_defers.has_key?(name())
-			return @@_defers[name()]
-		else
-			nil
-		end
-	end
+	@@_defers={}
 
 	# Добавляем процедуру отложенной инициализации в список
 	# Поскольку все изменения, которые делают в классовых переменных потомки, производятся в базовом классе
@@ -119,9 +112,9 @@ class HFSMDSL < HFSMObject
 	end
 
 	# Производит инициализацию объекта target отложенными объектами данного класса
-	def self.createMyDefersIn(target)
-		if _defers
-			_defers.each do |block|
+	def self.createDefersIn(target)
+		if @@_defers and @@_defers.has_key?(name())
+			@@_defers[name()].each do |block|
 				target.instance_eval(&block)
 			end
 		end
@@ -130,8 +123,8 @@ class HFSMDSL < HFSMObject
 	# и инициализируем их
 	def createDefers
 		self.class.ancestors.reverse.each do |ancestor|
-			if ancestor.methods.include? :createMyDefersIn
-				ancestor.createMyDefersIn(self)
+			if ancestor.methods.include? :createDefersIn
+				ancestor.createDefersIn(self)
 			end
 		end
 	end
@@ -152,11 +145,14 @@ class HFSMDSL < HFSMObject
 			raise HFSMException, "HFSM Error: Duplicate object %s in %s %s" % [key,self.class.name,self.key]
 		else
 			@elements[key]=element
-			element.parent=self
-			element.key=key
+			element.addedTo(self,key)
 		end
 	end
 	
+	def addedTo(parent,key)
+	  @parent=parent
+	  @key=key
+	end
 	
 	def setup
 		@elements.each  { |k,v|	v.setup }

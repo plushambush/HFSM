@@ -1,3 +1,4 @@
+#!/usr/bin/ruby
 load "hfsm.rb"
 
 class TestSender < HFSMActor
