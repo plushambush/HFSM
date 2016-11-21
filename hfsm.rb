@@ -299,24 +299,24 @@ class HFSMHandler < HFSMDSL
 	end
 
 
-	def stage
-		@parent.stage
+	def current_stage
+		@parent.current_stage
 	end
 	
-	def actor
-		@parent.actor
+	def current_actor
+		@parent.current_actor
 	end
 	
-	def machine
-		@parent.machine
+	def current_machine
+		@parent.current_machine
 	end
 	
-	def state
+	def current_state
 		@parent
 	end
 	
 	def addressmatch
-			HFSMAddress.new(stage.key,actor.key,machine.key,@longname)
+			HFSMAddress.new(current_stage.key,current_actor.key,current_machine.key,@longname)
 	end
 	
 	def match_context?(context)
@@ -335,8 +335,8 @@ class HFSMHandler < HFSMDSL
 	end 
 	
 	def try_handle(event)
-		if state.key==machine.current_state.key
-			context=HFSMContext.new(stage,actor,machine,event)
+		if current_state.key==current_machine.current_state.key
+			context=HFSMContext.new(current_stage,current_actor,current_machine,event)
 			if match_context?(context)
 				execute(context)
 			end
@@ -354,7 +354,7 @@ class HFSMHandler < HFSMDSL
 	end
 	
 	def subscribe_to_events(address)
-		stage.subscribe(address,self)
+		current_stage.subscribe(address,self)
 	end
 	
 end	
@@ -379,32 +379,32 @@ class HFSMState < HFSMDSL
 		@leave=block
 	end
 	
-	def stage
-		@parent.stage
+	def current_stage
+		@parent.current_stage
 	end
 	
-	def actor
-		@parent.actor
+	def current_actor
+		@parent.current_actor
 	end
 	
-	def machine
+	def current_machine
 		@parent
 	end
 	
-	def state
+	def current_state
 		self
 	end
 	
 	def enter_state
 		if @entry
-			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.key,actor.key,machine.key,""))
+			context=HFSMContext.new(current_stage,current_actor,current_machine,HFSMEvent.new(current_stage.key,current_actor.key,current_machine.key,""))
 			context.instance_eval(&@entry)
 		end
 	end
 	
 	def leave_state
 		if @leave
-			context=HFSMContext.new(stage,actor,machine,HFSMEvent.new(stage.key,actor.key,machine.key,""))
+			context=HFSMContext.new(current_stage,current_actor,current_machine,HFSMEvent.new(current_stage.key,current_actor.key,current_machine.key,""))
 			context.instance_eval(&@leave)
 		end
 	end
@@ -440,15 +440,15 @@ class HFSMMachine < HFSMDSL
 
 	end
 
-	def stage
-		@parent.stage
+	def current_stage
+		@parent.current_stage
 	end
 	
-	def actor
-		@parent.actor
+	def current_actor
+		@parent.current_actor
 	end
 	
-	def machine
+	def current_machine
 		self
 	end
 
@@ -492,11 +492,11 @@ class HFSMActor < HFSMDSL
 		createDefers
 	end
 	
-	def stage
-		@parent.stage
+	def current_stage
+		@parent.current_stage
 	end
 	
-	def actor
+	def current_actor
 		self
 	end
 	
@@ -537,7 +537,7 @@ class HFSMStage < HFSMDSL
 	end
 
 
-	def stage
+	def current_stage
 		self
 	end
 	
