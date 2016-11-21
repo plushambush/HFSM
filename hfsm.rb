@@ -366,7 +366,7 @@ class HFSMState < HFSMDSL
 	
 	def initialize
 		super()
-		@allowed_elements={HFSMHandler=>:@elements}
+		@allowed_elements={HFSMHandler=>:@elements, HFSMState=>:@elements}
 		@enrty=nil
 		@leave=nil
 	end
@@ -421,6 +421,13 @@ class HFSMState < HFSMDSL
 		obj=HFSMHandler.new(eventname,expr,&block)
 		self.addElement(eventname,obj)
 	end
+	
+	def state(key, &block)
+		obj=HFSMState.new
+		self.addElement(key,obj)
+		obj.instance_eval(&block)		
+	end
+	
 
 	def with
 		Proc.new
