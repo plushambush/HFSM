@@ -95,9 +95,10 @@ class HFSMDSL < HFSMObject
 	attr_accessor :elements,:parent,:key,:group
 
 	def initialize
-		super()
+		super
 		@allowed_elements=[]
 		@parent=nil
+		@key=nil
 		@elements={}
 		@group=:@elements
 	end
@@ -145,6 +146,15 @@ class HFSMDSL < HFSMObject
 
 	
 
+	def findStorage(element)
+		store_as = (@allowed_elements.keys & element.class.ancestors)
+		if store_as
+			return @allowed_elements[store_as[0]]
+		else
+			return nil
+		end
+	end
+
 
 	################################################################################################
 	#Добавление нового элемента к elements
@@ -152,13 +162,14 @@ class HFSMDSL < HFSMObject
 	#ПРоверяем не дублируется ли имя элемента
 	################################################################################################
 	def addElement(key,element)
-		if not (@allowed_elements & element.class.ancestors)
-			raise HFSMException,"HFSM Error: Class %s is not allowed as element of %s. (Allowed:%s)" % [element.class.name,self.class.name,@allowed_elements]
+		storage=findStorage(element)
+		if not storage
+			raise HFSMException,"HFSM Error: Class %s is not allowed as element of %s. (Allowed:%s)" % [element.class.name,self.class.name,@allowed_elements.keys]
 		end
-		if not self.instance_variable_defined?(element.group)
-			self.instance_variable_set(element.group,Hash.new)
+		if not self.instance_variable_defined?(storage)
+			self.instance_variable_set(storage,Hash.new)
 		end
-		self.instance_variable_get(element.group)[key]=element
+		self.instance_variable_get(storage)[key]=element
 		element.addedTo(self,key)
 	end
 	
@@ -351,7 +362,7 @@ class HFSMState < HFSMDSL
 	
 	def initialize
 		super()
-		@allowed_elements=[HFSMHandler]
+		@allowed_elements={HFSMHandler=>:@elements}
 		@enrty=nil
 		@leave=nil
 	end
@@ -421,7 +432,7 @@ class HFSMMachine < HFSMDSL
 	
 	def initialize
 		super()
-		@allowed_elements=[HFSMState]
+		@allowed_elements={HFSMState=>:@elements}
 
 	end
 
@@ -473,7 +484,7 @@ class HFSMActor < HFSMDSL
 	
 	def initialize
 		super
-		@allowed_elements=[HFSMMachine]
+		@allowed_elements={HFSMMachine=>:@elements}
 		createDefers
 	end
 	
@@ -514,7 +525,7 @@ class HFSMStage < HFSMDSL
 	
 	def initialize(name)
 		super()
-		@allowed_elements=[HFSMActor]
+		@allowed_elements={HFSMActor=>:@elements}
 		@key=name
 		@queue=HFSMQueue.new
 		@subscribers=[]
