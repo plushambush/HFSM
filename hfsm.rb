@@ -152,7 +152,7 @@ class HFSMDSL < HFSMObject
 
 	def findStorage(element)
 		store_as = (@allowed_elements.keys & element.class.ancestors)
-		if store_as
+		if not store_as.empty?
 			return @allowed_elements[store_as[0]]
 		else
 			return nil
@@ -299,24 +299,24 @@ class HFSMHandler < HFSMDSL
 	end
 
 
-	def current_stage
-		@parent.current_stage
+	def this_stage
+		@parent.this_stage
 	end
 	
-	def current_actor
-		@parent.current_actor
+	def this_actor
+		@parent.this_actor
 	end
 	
-	def current_machine
-		@parent.current_machine
+	def this_machine
+		@parent.this_machine
 	end
 	
-	def current_state
+	def this_state
 		@parent
 	end
 	
 	def addressmatch
-			HFSMAddress.new(current_stage.key,current_actor.key,current_machine.key,@longname)
+			HFSMAddress.new(this_stage.key,this_actor.key,this_machine.key,@longname)
 	end
 	
 	def match_context?(context)
@@ -335,8 +335,8 @@ class HFSMHandler < HFSMDSL
 	end 
 	
 	def try_handle(event)
-		if current_state.key==current_machine.current_state.key
-			context=HFSMContext.new(current_stage,current_actor,current_machine,event)
+		if this_state.key==this_machine.current_state.key
+			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,event)
 			if match_context?(context)
 				execute(context)
 			end
@@ -354,7 +354,7 @@ class HFSMHandler < HFSMDSL
 	end
 	
 	def subscribe_to_events(address)
-		current_stage.subscribe(address,self)
+		this_stage.subscribe(address,self)
 	end
 	
 end	
@@ -363,58 +363,119 @@ end
 
 class HFSMState < HFSMDSL
 
+  attr_reader :current_state
 	
 	def initialize
 		super()
-		@allowed_elements={HFSMHandler=>:@elements, HFSMState=>:@elements}
-		@enrty=nil
-		@leave=nil
+		@allowed_elements={HFSMHandler=>:@handlers, HFSMState=>:@states}
+		@entry=nil
+		@exit=nil
+		@current_state=nil
+		@states={}
+		@handlers={}
 	end
 	
 	def setEntry(&block)
 		@entry=block
 	end
 	
-	def setLeave(&block)
-		@leave=block
+	def setExit(&block)
+		@exit=block
 	end
 	
-	def current_stage
-		@parent.current_stage
+	def this_stage
+		@parent.this_stage
 	end
 	
-	def current_actor
-		@parent.current_actor
+	def this_actor
+		@parent.this_actor
 	end
 	
-	def current_machine
+	def this_machine
 		@parent
 	end
 	
-	def current_state
+	def this_state
 		self
 	end
 	
-	def enter_state
+	def have_parent_state
+	  return (not (@parent.class.ancestors & [HFSMState]).empty?)
+	end
+
+	# сюда входим при смене state по результатам работы обработчика
+	def request_state_change(statename)
+		if have_parent_state
+			@parent.change_state(statename)
+		else
+			raise HFSMStateException, "HFSM Error: State not found [%s]" % [statename]
+		end	  
+	end
+	
+
+	def change_state(statename)
+		if not @states.empty? and @states.has_key?(statename)
+			switch_to_state(@states[statename])
+		else
+			if have_parent_state
+				@parent.change_state(statename)
+			else
+				raise HFSMStateException, "HFSM Error: State not found [%s]" % [statename]
+			end
+		end
+	end
+	
+	def switch_to_state(state)
+		@current_state.leave_states_chain if @current_state
+		@current_state=state
+		@current_state.enter_states_chain
+	end
+	
+	
+	# —юда входим при инициализации state
+	def enter_states_chain
+		enter_this_state
+		if not @states.empty?
+		  if @states.has_key?(InitStateName)
+			@current_state=@states[InitStateName]
+			@current_state.enter_state
+		  else
+			byebug
+			raise HFSMStateException, "HFSM Error: No init state for %s" % [@key]	
+		  end
+		end
+		  
+	end
+	
+	def leave_states_chain
+		@current_state.leave_state if @current_state
+		leave_this_state
+	end
+	
+	def enter_this_state
 		if @entry
-			context=HFSMContext.new(current_stage,current_actor,current_machine,HFSMEvent.new(current_stage.key,current_actor.key,current_machine.key,""))
+			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.new(this_stage.key,this_actor.key,this_machine.key,""))
 			context.instance_eval(&@entry)
 		end
 	end
 	
-	def leave_state
-		if @leave
-			context=HFSMContext.new(current_stage,current_actor,current_machine,HFSMEvent.new(current_stage.key,current_actor.key,current_machine.key,""))
-			context.instance_eval(&@leave)
+	def leave_this_state
+		if @exit
+			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.new(this_stage.key,this_actor.key,this_machine.key,""))
+			context.instance_eval(&@exit)
 		end
 	end
+	
+	
+	
+	
 	
 	def entry(&block)
 		self.setEntry(&block)
 	end
 
 	def leave(&block)
-		self.setLeave(&block)
+		self.setExit(&block)
 	end
 	
 	def on(eventname,expr=nil,&block)
@@ -433,29 +494,33 @@ class HFSMState < HFSMDSL
 		Proc.new
 	end
 	
+	def setup
+	  (@states.values+@handlers.values).each {|v| v.setup}
+	end
+	
 end
 
 
 
-class HFSMMachine < HFSMDSL
+class HFSMMachine < HFSMState
 
-	attr_reader :current_state
 	
 	def initialize
 		super()
-		@allowed_elements={HFSMState=>:@elements}
+		@allowed_elements={HFSMState=>:@states}
+		
 
 	end
 
-	def current_stage
-		@parent.current_stage
+	def this_stage
+		@parent.this_stage
 	end
 	
-	def current_actor
-		@parent.current_actor
+	def this_actor
+		@parent.this_actor
 	end
 	
-	def current_machine
+	def this_machine
 		self
 	end
 
@@ -466,19 +531,7 @@ class HFSMMachine < HFSMDSL
 	end
 	
 	def reset
-		change_state(InitStateName,false)
-	end
-	
-	def change_state(statename,leave_previous=true)
-		if @elements.has_key?(statename)
-			if leave_previous and @current_state
-				@current_state.leave_state()
-			end
-			@current_state=@elements[statename]
-			@current_state.enter_state()
-		else
-			raise HFSMStateException,"HFSM Error: Unknown state %s in machine %s of %s" % [statename,@key,@parent.key]
-		end
+		change_state(InitStateName)
 	end
 	
 	def state(key, &block)
@@ -499,11 +552,11 @@ class HFSMActor < HFSMDSL
 		createDefers
 	end
 	
-	def current_stage
-		@parent.current_stage
+	def this_stage
+		@parent.this_stage
 	end
 	
-	def current_actor
+	def this_actor
 		self
 	end
 	
@@ -544,7 +597,7 @@ class HFSMStage < HFSMDSL
 	end
 
 
-	def current_stage
+	def this_stage
 		self
 	end
 	
@@ -599,25 +652,26 @@ end
 #  онтекст, в котором выполн€ютс€ обработчики событий и провер€ютс€ услови€ 'with'
 ####################################################################################################
 class HFSMContext < HFSMBase
-	def initialize(stage,actor,machine,event)
+	def initialize(stage,actor,machine,state,event)
 		@stage=stage
 		@actor=actor
 		@machine=machine
+		@state=state
 		@event=event
 	end
 	
 	def goto(statename)
-		@machine.change_state(statename)
+		@state.request_state_change(statename)
 	end
 	
 	def signal(longname,payload=Hash.new)
 		event=HFSMEvent.new(@stage.key,@actor.key,@machine.key,longname,payload)
-		@actor.parent.post(event)
+		@stage.post(event)
 	end
 	
 	def reply(shortname,payload=Hash.new)
 		event=HFSMEvent.new(@event.from.stagename,@event.from.actorname,@event.from.machinename,shortname,payload)
-		@actor.parent.post(event)
+		@stage.post(event)
 	end
 	
 	def reset
