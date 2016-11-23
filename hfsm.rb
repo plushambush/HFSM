@@ -47,11 +47,11 @@ end
 #Объект который имеет имя (label)
 ####################################################################################################
 class HFSMObject < HFSMBase
-	attr_accessor :label
+	attr_accessor :name
 
-	def initialize(label='')
+	def initialize(name='')
 		super()
-		@label=label
+		@name=name
 	end
 end
 
@@ -316,7 +316,7 @@ class HFSMHandler < HFSMDSL
 	end
 	
 	def addressmatch
-			HFSMAddress.new(this_stage.key,this_actor.key,this_machine.key,@longname)
+			HFSMAddress.new(this_stage.name,this_actor.name,this_machine.name,@longname)
 	end
 	
 	def match_context?(context)
@@ -335,7 +335,7 @@ class HFSMHandler < HFSMDSL
 	end 
 	
 	def try_handle(event)
-		if this_state.key==this_machine.current_state.key
+		if this_state.name==this_machine.current_state.name
 			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,event)
 			if match_context?(context)
 				execute(context)
@@ -454,14 +454,14 @@ class HFSMState < HFSMDSL
 	
 	def enter_this_state
 		if @entry
-			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.new(this_stage.key,this_actor.key,this_machine.key,""))
+			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.new(this_stage.name,this_actor.name,this_machine.name,""))
 			context.instance_eval(&@entry)
 		end
 	end
 	
 	def leave_this_state
 		if @exit
-			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.new(this_stage.key,this_actor.key,this_machine.key,""))
+			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.new(this_stage.name,this_actor.name,this_machine.name,""))
 			context.instance_eval(&@exit)
 		end
 	end
@@ -665,7 +665,7 @@ class HFSMContext < HFSMBase
 	end
 	
 	def signal(longname,payload=Hash.new)
-		event=HFSMEvent.new(@stage.key,@actor.key,@machine.key,longname,payload)
+		event=HFSMEvent.new(@stage.name,@actor.name,@machine.name,longname,payload)
 		@stage.post(event)
 	end
 	
@@ -679,11 +679,11 @@ class HFSMContext < HFSMBase
 	end
 	
 	def actor
-		@actor.key
+		@actor.name
 	end
 	
 	def machine
-		@machine.key
+		@machine.name
 	end
 	
 	def event
