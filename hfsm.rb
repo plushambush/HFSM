@@ -59,13 +59,34 @@ end
 ####################################################################################################
 
 class HFSMSubscription < HFSMBase
-	attr_reader :address,:handler
+	attr_reader :address,:machine,:expr
 
-	def initialize(address,handler)
+	def initialize(address,expr,machine)
 		super()
 		@address=address
-		@handler=handler
+		@machine=machine
+		@expr=expr
 	end
+	
+	def matches_event?(event)
+		if @address.matches?(event.to)
+			begin
+				context=HFSMContext.new(@machine.this_stage,@machine.this_actor,@machine,nil,event)
+				return context.instance_eval(&@expr)
+			rescue NoMethodError
+				return false
+				
+			rescue ArgumentError
+				return true
+			end
+		else
+			return false
+		end
+	end 
+	
+	
+	
+	
 end
 
 ####################################################################################################
@@ -266,7 +287,6 @@ class HFSMEvent < HFSMObject
 
 	attr_accessor :from, :to, :payload
 
-
 	def self.create(longname,stagename,actorname,machinename,payload=Hash.new)
 		e=HFSMEvent.new
 		e.payload=payload
@@ -274,8 +294,6 @@ class HFSMEvent < HFSMObject
 		e.to=HFSMAddress.create(longname,stagename,actorname,machinename)
 		return e
 	end
-	
-	
   
 	def initialize()
 		super
@@ -308,15 +326,14 @@ end
 
 
 class HFSMHandler < HFSMDSL
+	attr_accessor :longname,:expr,:block
 	
 	def initialize(longname,expr,&block)
 		super()
 		@longname=longname
 		@expr=expr
 		@block=block
-
 	end
-
 
 	def this_stage
 		@parent.this_stage
@@ -334,47 +351,11 @@ class HFSMHandler < HFSMDSL
 		@parent
 	end
 	
-	def addressmatch
-			return HFSMAddress.create(@longname,this_stage.name,this_actor.name,this_machine.name)
-	end
-	
-	def matches_context?(context)
-		if addressmatch.matches?(context.event.to)
-			begin
-				return context.instance_eval(&@expr)
-			rescue NoMethodError
-				return false
-				
-			rescue ArgumentError
-				return true
-			end
-		else
-			return false
-		end
-	end 
-	
-	def try_handle(event)
-		if this_state.name==this_machine.current_state.name
-			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,event)
-			if matches_context?(context)
-				execute(context)
-			end
-		end
-		
-	end
-	
 	
 	def execute(context)
-		context.instance_eval(&@block)
+		return context.instance_eval(&@block)
 	end
 	
-	def setup
-		subscribe_to_events(addressmatch)
-	end
-	
-	def subscribe_to_events(address)
-		this_stage.subscribe(address,self)
-	end
 	
 end	
 
@@ -485,7 +466,26 @@ class HFSMState < HFSMDSL
 		end
 	end
 	
+	def newHandler(eventname,expr,&block)
+		obj=HFSMHandler.new(eventname,expr,&block)
+		self.addElement(eventname,obj)
+	end	
 	
+	def createSubscriptions
+		@handlers.each do |key,handler|
+			this_stage.subscribe(HFSMAddress.create(handler.longname,this_stage.name,this_actor.name,this_machine.name),handler.expr,self)
+		end
+	end
+
+	def setup
+		super
+		createSubscriptions
+		(@states.values+@handlers.values).each {|v| v.setup}
+	end
+
+
+
+
 	
 	def entry(&block)
 		self.setEntry(&block)
@@ -496,8 +496,7 @@ class HFSMState < HFSMDSL
 	end
 	
 	def on(eventname,expr=nil,&block)
-		obj=HFSMHandler.new(eventname,expr,&block)
-		self.addElement(eventname,obj)
+		newHandler(eventname,expr,&block)
 	end
 	
 	def state(key, &block)
@@ -505,15 +504,11 @@ class HFSMState < HFSMDSL
 		self.addElement(key,obj)
 		obj.instance_eval(&block)		
 	end
-	
 
 	def with
 		Proc.new
 	end
 	
-	def setup
-	  (@states.values+@handlers.values).each {|v| v.setup}
-	end
 	
 end
 
@@ -637,13 +632,17 @@ class HFSMStage < HFSMDSL
 		end
 	end
 	
-	def subscribe(address,handler)
-		puts "Subscribing %s to %s" % [address,handler]
-		@subscribers << HFSMSubscription.new(address,handler)
+	def subscribe(address,expr,machine)
+		puts "Subscribing %s to %s" % [machine,address]
+		@subscribers << HFSMSubscription.new(address,expr,machine)
 	end
 	
 	def dispatch(event)
-		@subscribers.each {|sub| sub.handler.try_handle(event)}
+		@subscribers.each do |sub| 
+			if sub.matches_event?(event)
+				sub.machine.process_event(event)
+			end
+		end
 	end
 	
 	def self.actor(key, supplied=HFSMActor, &block)
