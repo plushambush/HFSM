@@ -59,34 +59,31 @@ end
 ####################################################################################################
 
 class HFSMSubscription < HFSMBase
-	attr_reader :address,:machine,:expr
+	attr_reader :address,:subscriber,:expr
 
-	def initialize(address,expr,machine)
+	def initialize(address,subscriber,expr=nil)
 		super()
 		@address=address
-		@machine=machine
+		@subscriber=subscriber
 		@expr=expr
 	end
 	
-	def matches_event?(event)
-		if @address.matches?(event.to)
-			begin
-				context=HFSMContext.new(@machine.this_stage,@machine.this_actor,@machine,nil,event)
-				return context.instance_eval(&@expr)
-			rescue NoMethodError
-				return false
-				
-			rescue ArgumentError
-				return true
-			end
-		else
+	def receiver_matches?(event)
+		return @address.matches?(event.to)
+	end
+	
+	def expr_matches?(event)
+		begin
+			context=HFSMContext.new(@subscriber.this_stage,@subscriber.this_actor,@subscriber.this_machinee,@subscriber.this_state,event)
+			return context.instance_eval(&@expr)
+		rescue NoMethodError
 			return false
+		rescue ArgumentError
+			return true
 		end
-	end 
-	
-	
-	
-	
+		return false
+	end
+
 end
 
 ####################################################################################################
@@ -94,6 +91,8 @@ end
 ####################################################################################################
 
 class HFSMQueue < HFSMBase
+# TODO: locks
+
 	def initialize()
 		super()  
 		@queue=[]
@@ -105,6 +104,12 @@ class HFSMQueue < HFSMBase
 	
 	def get
 		return @queue.shift
+	end
+	
+	def chunk
+		c=@queue.dup
+		@queue.clear
+		return c
 	end
 end
 
@@ -124,7 +129,6 @@ class HFSMDSL < HFSMObject
 		@parent=nil
 		@key=nil
 		@elements={}
-		@group=:@elements
 	end
 	
 	def debug_print(tab=0,key='')
@@ -132,6 +136,22 @@ class HFSMDSL < HFSMObject
 		@elements.each do |k,v|
 			v.debug_print(tab+1,k)
 		end
+	end
+	
+	def this_stage
+		@parent.this_stage
+	end
+	
+	def this_actor
+		@parent.this_actor
+	end
+	
+	def this_machine
+		@parent.this_machine
+	end
+	
+	def this_state
+		@parent.this_state
 	end
 	
 	###########################################################################################
@@ -215,6 +235,10 @@ class HFSMAddress < HFSMBase
 	attr_reader :stagename,:actorname,:machinename,:eventname
 
 
+	def self.simplematch?(a,b)
+		return (not ((a != "*") and (b != "*") and (a != b)))
+	end
+
 	def initialize
 	  super
 	end
@@ -250,19 +274,10 @@ class HFSMAddress < HFSMBase
 	end
 	
 	def matches?(other)
-		if @stagename!=other.stagename and @stagename!="*" and other.stagename!="*"
-			return false
-		end
-		if @actorname!=other.actorname and @actorname!="*" and other.actorname!="*"
-			return false
-		end
-		if @machinename!=other.machinename and @machinename!="*" and other.machinename!="*"
-			return false
-		end
-		if @eventname!=other.eventname and @eventname!="*" and other.eventname!="*"
-			return false
-		end
-		return true
+		return  (simplematch?(@stagename,other.stagename) or
+				simplematch?(@actorname,other.actorname) or
+				simplematch?(@machinename,other.machinename) or
+				simplematch?(@eventname,other.eventname))
 	
 	end
 	
@@ -318,44 +333,20 @@ class HFSMEvent < HFSMObject
 		end
 	end
 	
-	def name
-		return @to.to_s
-	end
-	
 end
 
 
 class HFSMHandler < HFSMDSL
-	attr_accessor :longname,:expr,:block
+	attr_accessor :block
 	
-	def initialize(longname,expr,&block)
+	def initialize(&block)
 		super()
-		@longname=longname
-		@expr=expr
 		@block=block
 	end
 
-	def this_stage
-		@parent.this_stage
-	end
-	
-	def this_actor
-		@parent.this_actor
-	end
-	
-	def this_machine
-		@parent.this_machine
-	end
-	
-	def this_state
-		@parent
-	end
-	
-	
 	def execute(context)
 		return context.instance_eval(&@block)
 	end
-	
 	
 end	
 
@@ -381,18 +372,6 @@ class HFSMState < HFSMDSL
 	
 	def setExit(&block)
 		@exit=block
-	end
-	
-	def this_stage
-		@parent.this_stage
-	end
-	
-	def this_actor
-		@parent.this_actor
-	end
-	
-	def this_machine
-		@parent
 	end
 	
 	def this_state
@@ -440,7 +419,6 @@ class HFSMState < HFSMDSL
 			@current_state=@states[InitStateName]
 			@current_state.enter_state
 		  else
-			byebug
 			raise HFSMStateException, "HFSM Error: No init state for %s" % [@key]	
 		  end
 		end
@@ -484,9 +462,6 @@ class HFSMState < HFSMDSL
 	end
 
 
-
-
-	
 	def entry(&block)
 		self.setEntry(&block)
 	end
@@ -520,25 +495,14 @@ class HFSMMachine < HFSMState
 	def initialize
 		super()
 		@allowed_elements={HFSMState=>:@states}
-		
-
 	end
 
-	def this_stage
-		@parent.this_stage
-	end
-	
-	def this_actor
-		@parent.this_actor
-	end
-	
 	def this_machine
 		self
 	end
-
 	
 	def setup
-		super
+		super()
 		reset
 	end
 	
@@ -555,7 +519,27 @@ class HFSMMachine < HFSMState
 end
 
 
-class HFSMActor < HFSMDSL
+class HFSMProcessor < HFSMDSL
+
+	def initialize
+		super
+		@queue=HFSMQueue.new
+	end
+
+	def post(event)
+		puts "Posting event %s" % [event.name]
+		@queue.put(event)
+	end
+	
+	def process_queue_chunk
+		chunk=@queue.chunk()
+		chunk.each {|event| dispatch(event)}
+	end
+	
+
+end
+
+class HFSMActor < HFSMProcessor
 
 	
 	def initialize
@@ -564,17 +548,8 @@ class HFSMActor < HFSMDSL
 		createDefers
 	end
 	
-	def this_stage
-		@parent.this_stage
-	end
-	
 	def this_actor
 		self
-	end
-	
-	
-	def dispatch(event)
-		puts "Dispatching %s to actor %s" % [event.name,@key]
 	end
 	
 	def self.machine(key,&block)
@@ -596,54 +571,26 @@ end
 ####################################################################################################
 # Объект, обслуживаюший очередь сообщений и раздающий их Actor'ам
 ####################################################################################################
-class HFSMStage < HFSMDSL
-
+class HFSMStage < HFSMProcessor
 	
 	def initialize(name)
 		super()
 		@allowed_elements={HFSMActor=>:@elements}
 		@key=name
-		@queue=HFSMQueue.new
-		@subscribers=[]
 		createDefers
 	end
-
 
 	def this_stage
 		self
 	end
 	
-	def post(event)
-		puts "Posting event %s" % [event.name]
-		@queue.put(event)
-	end
-	
 	def execute
 		setup
-		process_queue
-	end
-	
-	def process_queue
 		while true
-			event=@queue.get()
-			if event
-				dispatch(event)
-			end
+			process_queue
 		end
 	end
 	
-	def subscribe(address,expr,machine)
-		puts "Subscribing %s to %s" % [machine,address]
-		@subscribers << HFSMSubscription.new(address,expr,machine)
-	end
-	
-	def dispatch(event)
-		@subscribers.each do |sub| 
-			if sub.matches_event?(event)
-				sub.machine.process_event(event)
-			end
-		end
-	end
 	
 	def self.actor(key, supplied=HFSMActor, &block)
 		deferred do
