@@ -104,9 +104,32 @@ class TestSender < HFSMActor
 				end
 				
 				on "Test5SignalReceived" do
-					goto "TestEnd"
+					goto "Test6"
 				end
 			end
+			
+			state "Test6" do
+				entry do 
+					puts "Test 6 started: Nested states"
+					puts "Signalling Signal6 which should be received by child state"
+					signal "Signal6"
+				end
+				state "Init" do
+					on "Signal6" do
+						puts "Signal 6 received in substate Test6.1"
+						reply "Signal6Received"
+					end
+				end
+				on "Signal6" do
+					puts "FAIL: Received signal for nested state in parent state"
+				end
+				on "Signal6Received" do
+					puts "Test 6 passed"
+					goto "TestEnd"
+				end
+				
+			end
+			
 			
 			state "TestEnd" do
 				entry do
