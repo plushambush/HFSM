@@ -624,14 +624,19 @@ class HFSMGenericEventProcessor < HFSMDSL
 	end
 	
 	def dispatchEvent(event)
+		visited=[]
 		@subscribers.each do |subs|
-			if subs.matchesReceiver?(event)
-				if @expr
-					if subs.matchesExpr?(event)
+			if not visited.include? subs.subscriber.name
+				if subs.matchesReceiver?(event)
+					if @expr
+						if subs.matchesExpr?(event)
+							subs.subscriber.dispatchEvent(event)
+							visited << subs.subscriber.name
+						end
+					else
 						subs.subscriber.dispatchEvent(event)
+						visited << subs.subscriber.name
 					end
-				else
-					subs.subscriber.dispatchEvent(event)
 				end
 			end
 		end
