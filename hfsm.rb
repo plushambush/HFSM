@@ -508,6 +508,26 @@ class HFSMState < HFSMDSL
 		end
 		return processed
 	end
+	
+	def dispatchEvent(event)
+		processed=false
+		if @current_state
+			processed=@current_state.dispatchEvent(event)
+		end
+		if not processed
+			processed=dispatchEventLocal(event)
+		end
+		return processed
+	end
+	
+	def dispatchEventLocal(event)
+		processed=false
+		@handlers.each do |key,handler|
+			processed=handler.dispatchEvent(event)
+			return processed if processed
+		end
+		return processed
+	end
 
 	def setup
 		super
