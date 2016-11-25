@@ -149,6 +149,17 @@ class TestSender < HFSMActor
 class TestStage < HFSMStage
 	actor "TestSender",TestSender
 	actor "TestReceiver" do
+		machine "InterceptMachine" do
+			state "Init" do
+				entry do
+					puts "Event interceptor started"
+				end
+				on "*.*.*.*" do
+					puts "Intercepted event %s" % [event.to]
+				end
+			end
+		end
+	
 		machine "TestReceiverMachine" do
 			state "Init" do
 				enter do
