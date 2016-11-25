@@ -388,15 +388,15 @@ class HFSMState < HFSMDSL
 	def initialize(name)
 		super
 		@allowed_elements={HFSMHandler=>:@handlers, HFSMState=>:@states}
-		@entry=nil
+		@enter=nil
 		@exit=nil
 		@current_state=nil
 		@states={}
 		@handlers={}
 	end
 	
-	def setEntry(&block)
-		@entry=block
+	def setEnter(&block)
+		@enter=block
 	end
 	
 	def setExit(&block)
@@ -460,9 +460,9 @@ class HFSMState < HFSMDSL
 	end
 	
 	def enter_this_state
-		if @entry
+		if @enter
 			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.create("",this_stage.name,this_actor.name,this_machine.name))
-			context.instance_eval(&@entry)
+			context.instance_eval(&@enter)
 		end
 	end
 	
@@ -536,8 +536,8 @@ class HFSMState < HFSMDSL
 	end
 
 
-	def entry(&block)
-		self.setEntry(&block)
+	def enter(&block)
+		self.setEnter(&block)
 	end
 
 	def leave(&block)

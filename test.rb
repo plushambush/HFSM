@@ -5,7 +5,7 @@ class TestSender < HFSMActor
 	machine "TestSenderMachine" do
 		
 			state "Init" do
-				entry do
+				enter do
 					puts "Entered Test"
 					puts "[Init state] check passed"
 					goto "Test1"
@@ -13,7 +13,7 @@ class TestSender < HFSMActor
 			end
 				
 			state "Test1" do
-				entry do
+				enter do
 					puts "Test 1 Started"
 					puts "Signalling local event 'Test1Signal1'"
 					signal "Test1Signal1"
@@ -33,7 +33,7 @@ class TestSender < HFSMActor
 			end
 				
 			state "Test2" do
-				entry do
+				enter do
 					puts "Test 2 Started"
 					puts "Signalling machine local event 'TestSenderMachine.Signal2'"
 					signal "TestSenderMachine.Signal2"
@@ -53,7 +53,7 @@ class TestSender < HFSMActor
 			end
 				
 			state "Test3" do
-				entry do
+				enter do
 					puts "Test 3 Started"
 					puts "Signalling actor local event 'TestSender.TestSenderMachine.Signal3'"
 					signal "TestSender.TestSenderMachine.Signal3"
@@ -73,7 +73,7 @@ class TestSender < HFSMActor
 			end
 				
 			state "Test4" do
-				entry do
+				enter do
 					puts "Test 4 Started"
 					puts "Signalling stage local event 'TestStage.TestSender.TestSenderMachine.Signal4'"
 					signal "TestStage.TestSender.TestSenderMachine.Signal4"
@@ -93,7 +93,7 @@ class TestSender < HFSMActor
 			end
 			
 			state "Test5" do
-				entry do
+				enter do
 					puts "Test 5 Started"
 					puts "Signalling to the machine on the other actor 'TestStage.TestReceiver.TestReceiverMachine.Signal5'"
 					signal "TestStage.TestReceiver.TestReceiverMachine.Signal5"
@@ -109,7 +109,7 @@ class TestSender < HFSMActor
 			end
 			
 			state "Test6" do
-				entry do 
+				enter do 
 					puts "Test 6 started: Nested states"
 					puts "Signalling Signal6 which should be received by child state"
 					signal "Signal6"
@@ -138,7 +138,7 @@ class TestSender < HFSMActor
 			
 			
 			state "TestEnd" do
-				entry do
+				enter do
 					puts "All tests passed"
 				end
 			end
@@ -151,7 +151,7 @@ class TestStage < HFSMStage
 	actor "TestReceiver" do
 		machine "TestReceiverMachine" do
 			state "Init" do
-				entry do
+				enter do
 					puts "TestReceiverMachine started"
 				end
 				
