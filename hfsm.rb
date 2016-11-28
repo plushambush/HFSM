@@ -91,25 +91,32 @@ end
 ####################################################################################################
 
 class HFSMQueue < HFSMBase
-# TODO: locks
 
 	def initialize()
 		super()  
+		@mutex=Mutex.new
 		@queue=[]
 	end
 	
 	def put(el)
-		@queue.push(el)
+		@mutex.synchronize do
+			@queue.push(el)
+		end
 	end
 	
 	def get
-		return @queue.shift
+		@mutex.synchronize do
+			r=@queue.shift
+		end
+		return r
 	end
 	
 	def chunk
-		c=@queue.dup
-		@queue.clear
-		return c
+		@mutex.synchronize do
+			c=@queue.dup
+			@queue.clear
+			return c
+		end
 	end
 end
 
