@@ -376,6 +376,10 @@ class HFSMHandler < HFSMDSL
 		@match=HFSMAddress.create(@longname,this_stage.name,this_actor.name,this_machine.name)		
 	end
 	
+	def receiveFromUpstream(event)
+		dispatchEvent(event)
+	end
+	
 	def dispatchEvent(event)
 		processed=false
 		if event.to.matches?(@match)
@@ -510,7 +514,7 @@ class HFSMState < HFSMDSL
 	def dispatchEvent(event)
 		processed=false
 		if @current_state
-			processed=@current_state.dispatchEvent(event)
+			processed=@current_state.receiveFromUpstream(event)
 		end
 		if not processed
 			processed=dispatchEventLocal(event)
@@ -518,10 +522,14 @@ class HFSMState < HFSMDSL
 		return processed
 	end
 	
+	def receiveFromUpstream(event)
+		dispatchEvent(event)
+	end
+	
 	def dispatchEventLocal(event)
 		processed=false
 		@handlers.each do |key,handler|
-			processed=handler.dispatchEvent(event)
+			processed=handler.receiveFromUpstream(event)
 			return processed if processed
 		end
 		return processed
@@ -634,7 +642,7 @@ class HFSMGenericEventProcessor < HFSMDSL
 			if not visited.include? subs.subscriber.name
 				if subs.matchesReceiver?(event)
 					if ((not @expr) or (@expr and subs.matchesExpr?(event)))
-						subs.subscriber.dispatchEvent(event)
+						subs.subscriber.receiveFromUpstream(event)
 						visited << subs.subscriber.name
 					end
 				end
@@ -662,6 +670,14 @@ class HFSMActor < HFSMGenericEventProcessor
 	def subscribeMeTo(address,subscriber,expr)
 		super
 		@parent.subscribeMeTo(address,self,expr)
+	end
+	
+	def _run
+		t=Thread.new do
+			while true do
+				processQueue
+			end
+		end
 	end
 	
 	def self.machine(key,&block)
@@ -703,6 +719,7 @@ class HFSMStage < HFSMGenericEventProcessor
 	end
 	
 	def start
+		byebug
 		setup
 		run
 	end
