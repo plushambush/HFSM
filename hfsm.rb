@@ -464,6 +464,7 @@ class HFSMState < HFSMDSL
 			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.create("",this_stage.name,this_actor.name,this_machine.name))
 			context.instance_eval(&@enter)
 		end
+		start_timers
 	end
 	
 	def leave_this_state
@@ -471,6 +472,15 @@ class HFSMState < HFSMDSL
 			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.create("",this_stage.name,this_actor.name,this_machine.name))
 			context.instance_eval(&@exit)
 		end
+		stop_timers
+	end
+	
+	def stop_timers
+		@timers.each {|k,timer| timer.stop}
+	end
+	
+	def start_timers
+		@timers.each {|k,timer| timer.start if timer.autostart}
 	end
 	
 	def newHandler(eventname,expr,&block)
@@ -517,12 +527,6 @@ class HFSMState < HFSMDSL
 		createSubscriptions
 	end
 
-	def setup
-		each_element {|k,v| v.setup}
-		_setup
-	end
-
-
 	def enter(&block)
 		self.setEnter(&block)
 	end
@@ -545,13 +549,11 @@ class HFSMState < HFSMDSL
 		Proc.new
 	end
 	
-	def timer(key,interval:nil,periodic:false,event:nil,payload:nil)
-		obj=HFSMTimer.new(key,interval,periodic,event,payload)
+	def timer(key,interval:nil,periodic:false,autostart:false,event:nil,payload:nil)
+		obj=HFSMTimer.new(key,interval,periodic,autostart,event,payload)
 		self.addElement(key,obj)
 	end
-	
-	
-	
+		
 end
 
 
@@ -580,6 +582,7 @@ class HFSMMachine < HFSMState
 	
 	def reset
 		change_state(InitStateName)
+		start_timers
 	end
 	
 	
@@ -818,9 +821,12 @@ class HFSMContext < HFSMBase
 end
 
 class HFSMTimer < HFSMDSL
-	def initialize(name,interval=nil,periodic=false,event=nil,payload=nil)
+	attr_reader :autostart
+	
+	def initialize(name,interval=nil,periodic=false,autostart=false,event=nil,payload=nil)
 		super(name)
 		@name=name
+		@autostart=autostart
 		@default_interval=interval
 		@default_event=event
 		@default_payload=payload
