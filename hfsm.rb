@@ -592,9 +592,11 @@ class HFSMGenericEventProcessor < HFSMDSL
 	end
 	
 	
-	def processQueue
-			event=@queue.deq
+	def processQueue(blocking=true)
+		if blocking or (not @queue.empty?)
+			event=@queue.deq((not blocking))
 			dispatchEvent(event)
+		end
 	end
 	
 	def dispatchEvent(event)
@@ -653,11 +655,16 @@ class HFSMActor < HFSMGenericEventProcessor
 		self.addElement(key,obj)
 		obj.instance_eval(&block)		
 	end
+	
+	def idle
+		sleep(0.000000001)
+	end
 
 	def _run
 		Thread.new do
 			while true do
-				processQueue
+				processQueue(blocking=false)
+				idle
 			end
 		end
 	end
