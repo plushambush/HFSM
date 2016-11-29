@@ -1,6 +1,7 @@
 require 'pp'
 
 InitStateName="Init"
+SleepResolution=0.0000000000001
 
 ####################################################################################################
 #Классы исключений
@@ -30,6 +31,9 @@ class HFSMUnknownEventException < HFSMHandlerException
 end
 
 class HFSMActorException < HFSMException
+end
+
+class HFSMTimerException < HFSMException
 end
 
 ####################################################################################################
@@ -310,8 +314,8 @@ class HFSMEvent < HFSMObject
 	end
 	
 	def method_missing(method_sym,arg=nil)
-		if @payload and @payload.has_key?(method_sym.to_s)
-			return @payload[method_sym.to_s]
+		if @payload and @payload.has_key?(method_sym)
+			return @payload[method_sym]
 		else
 			raise NoMethodError,"HFSM Error: Attribute %s not found in event %s" % [method_sym,name]
 		end
@@ -541,8 +545,8 @@ class HFSMState < HFSMDSL
 		Proc.new
 	end
 	
-	def timer(key,interval)
-		obj=HFSMTimer.new(key,interval)
+	def timer(key,interval:nil,periodic:false,event:nil,payload:nil)
+		obj=HFSMTimer.new(key,interval,periodic,event,payload)
 		self.addElement(key,obj)
 	end
 	
@@ -553,11 +557,12 @@ end
 
 
 class HFSMMachine < HFSMState
+	attr_reader :timers
 
 	
 	def initialize(name)
 		super
-		@allowed_elements={HFSMState=>:@states}
+		@allowed_elements={HFSMState=>:@states, HFSMTimer=>:@timers}
 	end
 
 	def this_machine
@@ -569,13 +574,14 @@ class HFSMMachine < HFSMState
 	end
 	
 	
-	def _setup
+	def _run
 		reset
 	end
 	
 	def reset
 		change_state(InitStateName)
 	end
+	
 	
 	def state(key, &block)
 		obj=HFSMState.new(key)
@@ -675,7 +681,7 @@ class HFSMActor < HFSMGenericEventProcessor
 	
 	
 	def idle
-		sleep(0.000000001)
+		sleep(SleepResolution)
 	end
 
 	def _run
@@ -768,6 +774,27 @@ class HFSMContext < HFSMBase
 		@stage.receiveFromDownstream(event)
 	end
 	
+	def start(timer,interval:nil,periodic:false,event:nil,payload:nil)
+		if @machine.timers.has_key?(timer)
+			@machine.timers[timer].start(interval,periodic,event,payload)
+		else
+			raise HFSMTimerException, "HFSM Error: Timer [%s] not found" % [timer]
+		end
+	end
+	
+	def stop(timer)
+		if @machine.timers.has_key?(timer)	
+			@machine.timers[timer].stop
+		else
+			raise HFSMTimerException, "HFSM Error: Timer [%s] not found" % [timer]
+		end
+			
+	end
+		
+	def restart(timer)
+		@machine.timers[timer].restart
+	end
+	
 	def reset
 		@machine.reset
 	end
@@ -786,9 +813,49 @@ class HFSMContext < HFSMBase
 end
 
 class HFSMTimer < HFSMDSL
-	def initialize(name,interval)
+	def initialize(name,interval=nil,periodic=false,event=nil,payload=nil)
+		super(name)
 		@name=name
-		@interval=interval
-		@state=:stopped
+		@default_interval=interval
+		@default_event=event
+		@default_payload=payload
+		@default_periodic=periodic
+		@thread=nil		
+	end
+	
+	def start(interval=nil,periodic=false,event=nil,payload=nil)
+		if (not interval) and (not @default_interval)
+			raise HFSMTimerException,"HFSM Error: Starting timer [%s] without interval set" % [@name]
+		end
+		
+		def first_defined(ar)
+			ar.each do |elem|
+				return elem if elem
+			end
+			return nil
+		end
+		
+		@current_interval=first_defined [interval,@default_interval]
+		@current_event=first_defined [event,@default_event,@name]
+		@current_payload=first_defined [payload,@default_payload]
+		@current_periodic=first_defined [periodic,@current_periodic]
+		
+		@thread=Thread.new do
+			begin
+				sleep @current_interval
+				e=HFSMEvent.create(@current_event,this_stage.name,this_actor.name,this_machine.name,@current_payload)
+				this_stage.receiveFromDownstream(e)
+			end while @current_periodic
+			
+		end
+	end
+	
+	def stop
+		@thread.kill if @thread
+	end
+	
+	def restart
+		stop
+		start(@current_interval,@current_periodic,@current_event,@current_payload)
 	end
 end
