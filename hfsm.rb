@@ -95,15 +95,25 @@ class HFSMDSL < HFSMObject
 
 	def initialize(name)
 		super
-		@allowed_elements=[]
+		@allowed_elements={}
 		@parent=nil
 		@key=nil
 		@elements={}
 	end
 	
+	def each_element
+		@allowed_elements.values.each do |val|
+			if self.instance_variable_defined?(val)
+				self.instance_variable_get(val).each do |k,v|
+					yield k,v
+				end
+			end
+		end
+	end
+	
 	def debug_print(tab=0,key='')
 		puts "%s (Parent=%s)" % [(" "*tab+self.class.name()+ " " +key).ljust(60),@parent]
-		@elements.each do |k,v|
+		each_element do |k,v|
 			v.debug_print(tab+1,k)
 		end
 	end
@@ -196,7 +206,7 @@ class HFSMDSL < HFSMObject
 	end
 	
 	def setup
-		@elements.each  { |k,v|	v.setup }
+		each_element  { |k,v|	v.setup }
 		_setup
 	end
 	
@@ -204,7 +214,7 @@ class HFSMDSL < HFSMObject
 	end
 	
 	def run
-		@elements.each { |k,v|  v.run }
+		each_element { |k,v|  v.run }
 		_run
 	end
 	
@@ -372,12 +382,13 @@ class HFSMState < HFSMDSL
 	
 	def initialize(name)
 		super
-		@allowed_elements={HFSMHandler=>:@handlers, HFSMState=>:@states}
+		@allowed_elements={HFSMHandler=>:@handlers, HFSMState=>:@states, HFSMTimer=>:@timers}
 		@enter=nil
 		@exit=nil
 		@current_state=nil
 		@states={}
 		@handlers={}
+		@timers={}
 	end
 	
 	def setEnter(&block)
@@ -503,7 +514,7 @@ class HFSMState < HFSMDSL
 	end
 
 	def setup
-		(@states.values+@handlers.values).each {|v| v.setup}
+		each_element {|k,v| v.setup}
 		_setup
 	end
 
@@ -529,6 +540,12 @@ class HFSMState < HFSMDSL
 	def with
 		Proc.new
 	end
+	
+	def timer(key,interval)
+		obj=HFSMTimer.new(key,interval)
+		self.addElement(key,obj)
+	end
+	
 	
 	
 end
@@ -656,6 +673,7 @@ class HFSMActor < HFSMGenericEventProcessor
 		obj.instance_eval(&block)		
 	end
 	
+	
 	def idle
 		sleep(0.000000001)
 	end
@@ -767,12 +785,10 @@ class HFSMContext < HFSMBase
 	end
 end
 
-
-
-
-
-
-
-
-
-
+class HFSMTimer < HFSMDSL
+	def initialize(name,interval)
+		@name=name
+		@interval=interval
+		@state=:stopped
+	end
+end
