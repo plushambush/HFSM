@@ -792,7 +792,12 @@ class HFSMContext < HFSMBase
 	end
 		
 	def restart(timer)
-		@machine.timers[timer].restart
+		if @machine.timers.has_key?(timer)	
+			@machine.timers[timer].restart
+		else
+			raise HFSMTimerException, "HFSM Error: Timer [%s] not found" % [timer]
+		end
+			
 	end
 	
 	def reset
@@ -838,7 +843,7 @@ class HFSMTimer < HFSMDSL
 		@current_interval=first_defined [interval,@default_interval]
 		@current_event=first_defined [event,@default_event,@name]
 		@current_payload=first_defined [payload,@default_payload]
-		@current_periodic=first_defined [periodic,@current_periodic]
+		@current_periodic=first_defined [periodic,@default_periodic]
 		
 		@thread=Thread.new do
 			begin
