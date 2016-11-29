@@ -178,4 +178,4 @@ end
 
 test=TestStage.new("TestStage")
 test.debug_print
-test.execute
+test.start

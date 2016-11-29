@@ -229,8 +229,20 @@ class HFSMDSL < HFSMObject
 	  @key=key
 	end
 	
+	def _setup
+	end
+	
 	def setup
 		@elements.each  { |k,v|	v.setup }
+		_setup
+	end
+	
+	def _run
+	end
+	
+	def run
+		@elements.each { |k,v|  v.run }
+		_run
 	end
 	
 end
@@ -360,8 +372,7 @@ class HFSMHandler < HFSMDSL
 	end
 	
 	
-	def setup
-		super
+	def _setup
 		@match=HFSMAddress.create(@longname,this_stage.name,this_actor.name,this_machine.name)		
 	end
 	
@@ -516,10 +527,13 @@ class HFSMState < HFSMDSL
 		return processed
 	end
 
+	def _setup
+		createSubscriptions
+	end
+
 	def setup
-		super
 		(@states.values+@handlers.values).each {|v| v.setup}
-		createSubscriptions		
+		_setup
 	end
 
 
@@ -567,8 +581,7 @@ class HFSMMachine < HFSMState
 	end
 	
 	
-	def setup
-		super()
+	def _setup
 		reset
 	end
 	
@@ -683,11 +696,15 @@ class HFSMStage < HFSMGenericEventProcessor
 		self
 	end
 	
-	def execute
-		setup
+	def _run
 		while true
 			processQueue
 		end
+	end
+	
+	def start
+		setup
+		run
 	end
 	
 	def self.actor(key, supplied=HFSMActor, &block)
