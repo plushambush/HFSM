@@ -486,13 +486,13 @@ class HFSMState < HFSMDSL
 	end	
 
 
-	def subscribeTo(address,subscriber,expr)
-		@parent.subscribeTo(address,subscriber,expr)
+	def subscribeMeTo(address,subscriber,expr)
+		@parent.subscribeMeTo(address,subscriber,expr)
 	end
 	
 	def createSubscriptions
 		@handlers.each do |key,handler|
-			subscribeTo(HFSMAddress.create(handler.longname,this_stage.name,this_actor.name,this_machine.name),handler,handler.expr)
+			subscribeMeTo(HFSMAddress.create(handler.longname,this_stage.name,this_actor.name,this_machine.name),handler,handler.expr)
 		end
 	end
 	
@@ -562,8 +562,8 @@ class HFSMMachine < HFSMState
 		self
 	end
 	
-	def subscribeTo(address,subscriber,expr)
-		@parent.subscribeTo(address,self,expr)
+	def subscribeMeTo(address,subscriber,expr)
+		@parent.subscribeMeTo(address,self,expr)
 	end
 	
 	
@@ -595,13 +595,18 @@ class HFSMGenericEventProcessor < HFSMDSL
 	##############################################################################
 	# Обработка очереди
 	#############################################################################
-	def subscribeTo(address,subscriber,expr=nil)
+	def subscribeMeTo(address,subscriber,expr=nil)
 		@subscribers << HFSMSubscription.new(address,subscriber,expr)
 	end
 	
-	def	 publishEvent(event)
+	def	 receiveFromUpstream(event)
 		@queue.put(event)
 	end
+	
+	def	 receiveFromDownstream(event)
+		@queue.put(event)
+	end
+	
 	
 	def processQueue
 		chunk=@queue.chunk()
@@ -641,9 +646,9 @@ class HFSMActor < HFSMGenericEventProcessor
 		self
 	end
 	
-	def subscribeTo(address,subscriber,expr)
+	def subscribeMeTo(address,subscriber,expr)
 		super
-		@parent.subscribeTo(address,self,expr)
+		@parent.subscribeMeTo(address,self,expr)
 	end
 	
 	def self.machine(key,&block)
@@ -733,12 +738,12 @@ class HFSMContext < HFSMBase
 	
 	def signal(longname,payload=Hash.new)
 		event=HFSMEvent.create(longname,@stage.name,@actor.name,@machine.name,payload)
-		@stage.publishEvent(event)
+		@stage.receiveFromDownstream(event)
 	end
 	
 	def reply(shortname,payload=Hash.new)
 		event=HFSMEvent.create(shortname,@event.from.stagename,@event.from.actorname,@event.from.machinename,payload)
-		@stage.publishEvent(event)
+		@stage.receiveFromDownstream(event)
 	end
 	
 	def reset
