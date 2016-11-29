@@ -1,6 +1,3 @@
-require 'thread'
-require 'pry'
-require 'byebug'
 require 'pp'
 
 InitStateName="Init"
@@ -84,40 +81,6 @@ class HFSMSubscription < HFSMBase
 		return false
 	end
 
-end
-
-####################################################################################################
-#Очередь событий
-####################################################################################################
-
-class HFSMQueue < HFSMBase
-
-	def initialize()
-		super()  
-		@mutex=Mutex.new
-		@queue=[]
-	end
-	
-	def put(el)
-		@mutex.synchronize do
-			@queue.push(el)
-		end
-	end
-	
-	def get
-		@mutex.synchronize do
-			r=@queue.shift
-		end
-		return r
-	end
-	
-	def chunk
-		@mutex.synchronize do
-			c=@queue.dup
-			@queue.clear
-			return c
-		end
-	end
 end
 
 
@@ -609,7 +572,7 @@ end
 class HFSMGenericEventProcessor < HFSMDSL
 	def initialize(name)
 		super
-		@queue=HFSMQueue.new
+		@queue=Queue.new
 		@subscribers=[]
 	end
 	
@@ -621,19 +584,17 @@ class HFSMGenericEventProcessor < HFSMDSL
 	end
 	
 	def	 receiveFromUpstream(event)
-		@queue.put(event)
+		@queue.enq(event)
 	end
 	
 	def	 receiveFromDownstream(event)
-		@queue.put(event)
+		@queue.enq(event)
 	end
 	
 	
 	def processQueue
-		chunk=@queue.chunk()
-		chunk.each do |event|
+			event=@queue.deq
 			dispatchEvent(event)
-		end
 	end
 	
 	def dispatchEvent(event)
@@ -649,13 +610,21 @@ class HFSMGenericEventProcessor < HFSMDSL
 			end
 		end
 	end
+
+	def _run
+		while true
+			processQueue
+		end
+	end
+
+	
+	
 	##############################################################################
 	
 	
 end
 
 class HFSMActor < HFSMGenericEventProcessor
-
 	
 	def initialize(name)
 		super
@@ -672,13 +641,6 @@ class HFSMActor < HFSMGenericEventProcessor
 		@parent.subscribeMeTo(address,self,expr)
 	end
 	
-	def _run
-		t=Thread.new do
-			while true do
-				processQueue
-			end
-		end
-	end
 	
 	def self.machine(key,&block)
 		deferred do
@@ -691,8 +653,15 @@ class HFSMActor < HFSMGenericEventProcessor
 		self.addElement(key,obj)
 		obj.instance_eval(&block)		
 	end
-	
-	
+
+	def _run
+		Thread.new do
+			while true do
+				processQueue
+			end
+		end
+	end
+
 end
 
 
@@ -712,14 +681,8 @@ class HFSMStage < HFSMGenericEventProcessor
 		self
 	end
 	
-	def _run
-		while true
-			processQueue
-		end
-	end
 	
 	def start
-		byebug
 		setup
 		run
 	end

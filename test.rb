@@ -179,3 +179,5 @@ end
 test=TestStage.new("TestStage")
 test.debug_print
 test.start
+while 1 do
+end
