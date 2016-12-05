@@ -1,7 +1,6 @@
 require 'pp'
 
 InitStateName="Init"
-SleepResolution=0.0000000000001
 
 ####################################################################################################
 #Классы исключений
@@ -700,7 +699,7 @@ class HFSMActor < HFSMGenericEventProcessor
 	
 	
 	def idle
-		sleep(SleepResolution)
+		Thread.pass
 	end
 
 	def _run
