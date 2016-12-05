@@ -551,6 +551,13 @@ class HFSMState < HFSMDSL
 		self.addElement(key,obj)
 		obj.instance_eval(&block)		
 	end
+	
+	def self.state(key,initial=false,&block)
+		deferred do 
+			state(key,initial,&block)
+		end
+	end
+	
 
 	def with
 		Proc.new
