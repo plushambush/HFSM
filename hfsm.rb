@@ -390,6 +390,7 @@ class HFSMState < HFSMDSL
 		@enter=nil
 		@exit=nil
 		@current_state=nil
+		@initial_state=nil
 		@states={}
 		@handlers={}
 		@timers={}
@@ -440,17 +441,21 @@ class HFSMState < HFSMDSL
 	end
 	
 	
-	# —юда входим при инициализации state
-	def enter_states_chain
-		enter_this_state
+	def enter_initial_state
 		if not @states.empty?
-		  if @states.has_key?(InitStateName)
-			@current_state=@states[InitStateName]
+		  if @initial_state
+			@current_state=@initial_state
 			@current_state.enter_states_chain
 		  else
 			raise HFSMStateException, "HFSM Error: No init state for %s" % [@key]	
-		  end
+		  end	
 		end
+	end
+	
+	# —юда входим при инициализации state
+	def enter_states_chain
+		enter_this_state
+		enter_initial_state
 		  
 	end
 	
@@ -539,8 +544,11 @@ class HFSMState < HFSMDSL
 		newHandler(eventname,expr,&block)
 	end
 	
-	def state(key, &block)
+	def state(key, initial=false, &block)
 		obj=HFSMState.new(key)
+		if initial or  key===InitStateName or @states.empty?
+			@initial_state=obj
+		end
 		self.addElement(key,obj)
 		obj.instance_eval(&block)		
 	end
@@ -552,6 +560,14 @@ class HFSMState < HFSMDSL
 	def timer(key,interval:nil,periodic:false,autostart:false,event:nil,payload:nil)
 		obj=HFSMTimer.new(key,interval,periodic,autostart,event,payload)
 		self.addElement(key,obj)
+	end
+	
+	def self.initial
+		true
+	end
+	
+	def initial
+		true
 	end
 		
 end
@@ -581,16 +597,16 @@ class HFSMMachine < HFSMState
 	end
 	
 	def reset
-		change_state(InitStateName)
+		enter_initial_state
 		start_timers
 	end
 	
 	
-	def state(key, &block)
-		obj=HFSMState.new(key)
-		self.addElement(key,obj)
-		obj.instance_eval(&block)		
-	end
+#	def state(key, &block)
+#		obj=HFSMState.new(key)
+#		self.addElement(key,obj)
+#		obj.instance_eval(&block)		
+#	end
 	
 end
 
