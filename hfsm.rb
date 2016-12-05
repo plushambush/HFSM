@@ -121,6 +121,20 @@ class HFSMDSL < HFSMObject
 		end
 	end
 	
+	def instantiate(key,supplied,&block)
+		if supplied.class==Class
+			obj=supplied.new(key)
+		else
+			raise HFSMException,"HFSM Error: Instantiated class %s in deferred constructor" % [supplied]
+		end
+		self.addElement(key,obj)
+		if block
+			obj.instance_eval(&block)
+		end
+		return obj
+	end
+	
+	
 	def this_stage
 		@parent.this_stage
 	end
@@ -544,12 +558,10 @@ class HFSMState < HFSMDSL
 	end
 	
 	def state(key, initial=false, &block)
-		obj=HFSMState.new(key)
-		if initial or  key===InitStateName or @states.empty?
+		obj=instantiate(key,HFSMState,&block)
+		if initial or  key===InitStateName or @states.count==1
 			@initial_state=obj
 		end
-		self.addElement(key,obj)
-		obj.instance_eval(&block)		
 	end
 	
 	def self.state(key,initial=false,&block)
@@ -607,12 +619,6 @@ class HFSMMachine < HFSMState
 		start_timers
 	end
 	
-	
-#	def state(key, &block)
-#		obj=HFSMState.new(key)
-#		self.addElement(key,obj)
-#		obj.instance_eval(&block)		
-#	end
 	
 end
 
@@ -692,16 +698,14 @@ class HFSMActor < HFSMGenericEventProcessor
 	end
 	
 	
-	def self.machine(key,&block)
+	def self.machine(key,supplied=HFSMMachine,&block)
 		deferred do
-			machine(key,&block)
+			machine(key,supplied, &block)
 		end
 	end
 
-	def machine(key, &block)
-		obj=HFSMMachine.new(key)
-		self.addElement(key,obj)
-		obj.instance_eval(&block)		
+	def machine(key, supplied=HFSMMachine, &block)
+		instantiate(key,supplied,&block)
 	end
 	
 	
@@ -743,18 +747,13 @@ class HFSMStage < HFSMGenericEventProcessor
 		run
 	end
 	
+	def actor(key,supplied=HFSMActor,&block)
+		instantiate(key,supplied,&block)
+	end
+	
 	def self.actor(key, supplied=HFSMActor, &block)
 		deferred do
-			if supplied.class==Class
-				obj=supplied.new(key)
-			else
-				raise HFSMException,"HFSM Error: Instantiated class %s in deferred constructor" % [supplied]
-			end
-			self.addElement(key,obj)
-			if block
-				obj.instance_eval(&block)
-			end
-			
+			actor(key,supplied,&block)
 		end
 	end
 
