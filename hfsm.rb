@@ -97,11 +97,18 @@ class HFSMDSL < HFSMObject
 	attr_accessor :elements,:parent,:key,:group
 
 	def initialize(name)
-		super
+		super(name)
 		@allowed_elements={}
 		@parent=nil
 		@key=nil
 		@elements={}
+	end
+	
+	def self.create(name,&block)
+		obj=self.new(name)
+		obj.createDefers
+		obj.instance_exec(&block) if block
+		return obj
 	end
 	
 	def each_element
@@ -123,14 +130,12 @@ class HFSMDSL < HFSMObject
 	
 	def instantiate(key,supplied,&block)
 		if supplied.class==Class
-			obj=supplied.new(key)
+			obj=supplied.create(key,&block)
 		else
 			raise HFSMException,"HFSM Error: Instantiated class %s in deferred constructor" % [supplied]
 		end
 		self.addElement(key,obj)
-		if block
-			obj.instance_eval(&block)
-		end
+		obj.setup
 		return obj
 	end
 	
@@ -685,7 +690,6 @@ class HFSMActor < HFSMGenericEventProcessor
 	def initialize(name)
 		super
 		@allowed_elements={HFSMMachine=>:@elements}
-		createDefers
 	end
 	
 	def this_actor
@@ -734,7 +738,6 @@ class HFSMStage < HFSMGenericEventProcessor
 		super
 		@allowed_elements={HFSMActor=>:@elements}
 		@key=name
-		createDefers
 	end
 
 	def this_stage
@@ -743,7 +746,6 @@ class HFSMStage < HFSMGenericEventProcessor
 	
 	
 	def start
-		setup
 		run
 	end
 	
