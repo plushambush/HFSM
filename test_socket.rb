@@ -2,7 +2,7 @@
 require 'socket'
 require 'byebug'
 load  'hfsm.rb'
-
+Thread.abort_on_exception=true
 
 class HFSMLineMachine < HFSMMachine
 	attr_accessor :buffer
@@ -32,13 +32,11 @@ class HFSMTCPServer < HFSMActor
 	attr_accessor :socket
 	machine "LineMachine",HFSMLineMachine
 	machine "Main" do
-	
 		state "Unconfigured" do
 			enter do
 				puts "TCPServer started in unconfigured state"
 			end
 			on "Configure" do
-				byebug
 				@actor.socket=@event.client_socket
 				goto "Active"
 			end
@@ -75,7 +73,7 @@ class HFSMTCPServerFabric < HFSMActor
 			end
 			state "Listen" do
 				enter do
-#					puts "Entered Listen state"
+					puts "Entered Listen state"
 					begin
 						client_socket, client_addrinfo=@actor.socket.accept_nonblock
 						signal "Connected",{:client_socket=>client_socket,:client_addrinfo=>client_addrinfo}
@@ -94,10 +92,9 @@ class HFSMTCPServerFabric < HFSMActor
 		state "WaitConnect" do
 			on "Listener.Connected" do
 				puts "Fabric: detected connection on socket #{@event.client_socket}"
-				byebug
 				newactorname="TCPServer%s" % [@event.client_socket.to_s]
 				@stage.actor newactorname,HFSMTCPServer
-				signal "%s.Main.Configure" % [newactorname]
+				signal "%s.Main.Configure" % [newactorname],{:client_socket=>@event.client_socket}
 			end
 		end
 	end

@@ -1,4 +1,5 @@
 require 'pp'
+require 'byebug'
 
 InitStateName="Init"
 
@@ -96,19 +97,21 @@ class HFSMDSL < HFSMObject
 	
 	attr_accessor :elements,:parent,:key,:group
 
-	def initialize(name)
+	def initialize(name,parent=nil,&block)
 		super(name)
-		@allowed_elements={}
-		@parent=nil
+		@allowed_elements=allowed_elements
+		@parent=parent
 		@key=nil
-		@elements={}
+		createDefers
+		createBlock(&block)
 	end
 	
-	def self.create(name,&block)
-		obj=self.new(name)
-		obj.createDefers
-		obj.instance_exec(&block) if block
-		return obj
+	def createBlock(&block)
+		self.instance_exec(&block) if block	
+	end
+	
+	def allowed_elements
+		{}
 	end
 	
 	def each_element
@@ -128,14 +131,15 @@ class HFSMDSL < HFSMObject
 		end
 	end
 	
-	def instantiate(key,supplied,&block)
+	def instantiate(key='',parent=nil,supplied=HFSMDSL,*args,&block)
 		if supplied.class==Class
-			obj=supplied.create(key,&block)
+			obj=supplied.new(key,parent,*args,&block)
 		else
 			raise HFSMException,"HFSM Error: Instantiated class %s in deferred constructor" % [supplied]
 		end
 		self.addElement(key,obj)
-		obj.setup
+		obj._setup
+		obj._run
 		return obj
 	end
 	
@@ -227,17 +231,7 @@ class HFSMDSL < HFSMObject
 	def _setup
 	end
 	
-	def setup
-		each_element  { |k,v|	v.setup }
-		_setup
-	end
-	
 	def _run
-	end
-	
-	def run
-		each_element { |k,v|  v.run }
-		_run
 	end
 	
 end
@@ -251,10 +245,6 @@ class HFSMAddress < HFSMBase
 
 	def self.simplematch?(a,b)
 		return (not ((a != "*") and (b != "*") and (a != b)))
-	end
-
-	def initialize
-	  super
 	end
 
 	def self.create(longname,stagename,actorname,machinename)
@@ -324,6 +314,10 @@ class HFSMEvent < HFSMObject
 		return e
 	end
   
+  	def to_s
+  		"#{@from} => #{@to}"
+  	end
+  
 	def initialize()
 		super
 		@from=nil
@@ -353,17 +347,20 @@ end
 class HFSMHandler < HFSMDSL
 	attr_accessor :block,:longname,:expr
 	
-	def initialize(longname,expr,&block)
-		super(longname)
+	def initialize(longname,parent,expr,&block)
+		super(longname,parent,&block)
 		@longname=longname
 		@expr=expr
-		@block=block
 	end
 
 	def execute(context)
 		result=context.instance_eval(&@block)
 		#TODO: handler exit codes
 		return (not (result==:UP))
+	end
+	
+	def createBlock(&block)
+		@block=block
 	end
 	
 	
@@ -402,9 +399,7 @@ class HFSMState < HFSMDSL
 
   attr_reader :current_state
 	
-	def initialize(name)
-		super
-		@allowed_elements={HFSMHandler=>:@handlers, HFSMState=>:@states, HFSMTimer=>:@timers}
+	def initialize(name,parent)
 		@enter=nil
 		@exit=nil
 		@current_state=nil
@@ -412,6 +407,11 @@ class HFSMState < HFSMDSL
 		@states={}
 		@handlers={}
 		@timers={}
+		super		
+	end
+	
+	def allowed_elements
+		{HFSMHandler=>:@handlers, HFSMState=>:@states, HFSMTimer=>:@timers}	
 	end
 	
 	def setEnter(&block)
@@ -507,8 +507,7 @@ class HFSMState < HFSMDSL
 	end
 	
 	def newHandler(eventname,expr,&block)
-		obj=HFSMHandler.new(eventname,expr,&block)
-		self.addElement(eventname,obj)
+		instantiate(eventname,self,HFSMHandler,expr,&block)
 	end	
 
 
@@ -549,6 +548,7 @@ class HFSMState < HFSMDSL
 	def _setup
 		createSubscriptions
 	end
+	
 
 	def enter(&block)
 		self.setEnter(&block)
@@ -563,7 +563,7 @@ class HFSMState < HFSMDSL
 	end
 	
 	def state(key, initial=false, &block)
-		obj=instantiate(key,HFSMState,&block)
+		obj=instantiate(key,self,HFSMState,&block)
 		if initial or  key===InitStateName or @states.count==1
 			@initial_state=obj
 		end
@@ -599,11 +599,13 @@ end
 
 class HFSMMachine < HFSMState
 	attr_reader :timers
-
 	
-	def initialize(name)
+	def initialize(name,parent,&block)
 		super
-		@allowed_elements={HFSMState=>:@states, HFSMTimer=>:@timers}
+	end
+	
+	def allowed_elements
+		{HFSMState=>:@states, HFSMTimer=>:@timers}	
 	end
 
 	def this_machine
@@ -614,25 +616,21 @@ class HFSMMachine < HFSMState
 		@parent.subscribeMeTo(address,self,expr)
 	end
 	
-	
 	def _run
-		reset
+		enter_states_chain
 	end
 	
-	def reset
-		enter_initial_state
-		start_timers
-	end
+	
 	
 	
 end
 
 
 class HFSMGenericEventProcessor < HFSMDSL
-	def initialize(name)
-		super
+	def initialize(name,parent)
 		@queue=Queue.new
 		@subscribers=[]
+		super		
 	end
 	
 	##############################################################################
@@ -659,6 +657,7 @@ class HFSMGenericEventProcessor < HFSMDSL
 	end
 	
 	def dispatchEvent(event)
+		puts "#{name}:  #{event}"
 		visited=[]
 		@subscribers.each do |subs|
 			if not visited.include? subs.subscriber.name
@@ -687,9 +686,8 @@ end
 
 class HFSMActor < HFSMGenericEventProcessor
 	
-	def initialize(name)
-		super
-		@allowed_elements={HFSMMachine=>:@elements}
+	def allowed_elements
+		{HFSMMachine=>:@elements}	
 	end
 	
 	def this_actor
@@ -709,7 +707,7 @@ class HFSMActor < HFSMGenericEventProcessor
 	end
 
 	def machine(key, supplied=HFSMMachine, &block)
-		instantiate(key,supplied,&block)
+		instantiate(key,self,supplied,&block)
 	end
 	
 	
@@ -725,7 +723,7 @@ class HFSMActor < HFSMGenericEventProcessor
 			end
 		end
 	end
-
+	
 end
 
 
@@ -734,23 +732,27 @@ end
 ####################################################################################################
 class HFSMStage < HFSMGenericEventProcessor
 	
-	def initialize(name)
-		super
-		@allowed_elements={HFSMActor=>:@elements}
-		@key=name
+	def initialize(name,parent=nil,&block)
+		@key=name	
+		super(name,parent,&block)
+
+	end
+
+	def allowed_elements
+		{HFSMActor=>:@elements}	
 	end
 
 	def this_stage
 		self
 	end
 	
-	
 	def start
-		run
+		_setup
+		_run
 	end
 	
 	def actor(key,supplied=HFSMActor,&block)
-		instantiate(key,supplied,&block)
+		instantiate(key,self,supplied,&block)
 	end
 	
 	def self.actor(key, supplied=HFSMActor, &block)
