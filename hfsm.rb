@@ -416,6 +416,7 @@ class HFSMState < HFSMDSL
 		@enter=nil
 		@exit=nil
 		@idle=nil
+		@idle_locked=true
 		@current_state=nil
 		@initial_state=nil
 		@states={}
@@ -505,15 +506,18 @@ class HFSMState < HFSMDSL
 			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.create("",this_stage.name,this_actor.name,this_machine.name))
 			context.instance_eval(&@enter)
 		end
+		unlock_idle
 		start_timers
 	end
 	
 	def leave_this_state
+		lock_idle
+		stop_timers		
 		if @exit
 			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.create("",this_stage.name,this_actor.name,this_machine.name))
 			context.instance_eval(&@exit)
 		end
-		stop_timers
+
 	end
 	
 	def stop_timers
@@ -615,8 +619,16 @@ class HFSMState < HFSMDSL
 		true
 	end
 	
+	def lock_idle
+		@idle_locked=true
+	end
+	
+	def unlock_idle
+		@idle_locked=false
+	end
+	
 	def _do_idle
-		if @idle
+		if @idle and not @idle_locked
 			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.create("",this_stage.name,this_actor.name,this_machine.name))
 			context.instance_eval(&@idle)
 		end

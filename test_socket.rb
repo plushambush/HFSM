@@ -7,15 +7,16 @@ Thread.abort_on_exception=true
 class HFSMLineMachine < HFSMMachine
 	attr_accessor :buffer
 	
-	state "Main" do
+	state "WaitLine" do
 		enter do
-			@buffer=''
+			@machine.buffer=''
 		end
 		
-		on "DataReceived" do
-			@event.data.lines.each do |line|
-				if line.end_with?("\n")
-					signal "LineReceived",{:line=>@machine.buffer+line}
+		on "Main.DataReceived" do
+			lines=@event.data.lines()
+			lines.each do |line|
+				if line =~ /\r*\n$/
+					signal "LineReceived",{:line=>@machine.buffer+line.chomp}
 					@machine.buffer=''
 				else
 					@machine.buffer+=line
@@ -30,6 +31,7 @@ end
 
 class HFSMTCPServer < HFSMActor
 	attr_accessor :socket
+	attr_accessor :outbuf
 	machine "LineMachine",HFSMLineMachine
 	machine "Main" do
 		state "Unconfigured" do
@@ -44,10 +46,57 @@ class HFSMTCPServer < HFSMActor
 		
 		state "Active" do
 			enter do
+				@actor.outbuf=''
 				puts "TCPServer configured"
 				@actor.socket.puts "Hello from TCP Server #{@actor.name}"
 			end	
+			
+			idle do
+					begin
+						data,sender_addrinfo=@actor.socket.recvfrom_nonblock(2048)
+						if not data.empty?
+							puts "Received data: #{data}"
+							signal "DataReceived",{:data => data}
+						end
+					rescue IO::EAGAINWaitReadable					
+					end
+					begin
+						if not @actor.outbuf.empty?
+							sent=@actor.socket.sendmsg_nonblock(@actor.outbuf)
+							if sent>0
+								@actor.outbuf.slice!(0,sent)
+							end
+						end
+					rescue Errno::EPIPE
+						signal "Disconnected"
+					end
+			end
+			
+			on "LineMachine.LineReceived" do
+				puts "Received line:#{@event.line}"
+				signal "Main.SendData",{:data=>"You said: #{@event.line}\n" }
+			end
+			
+			on "SendData" do
+				@actor.outbuf+=@event.data
+			end
+			
+			on "Disconnected" do
+				goto "Stopped"
+			end
+			
+			on "Ping" do
+				signal "SendData",{:data=>"Ping!\n"}
+			end
 		end
+		
+		state "Stopped" do
+			enter do
+				puts "Server stopped"
+			end
+		end
+		
+		
 	end
 end
 
