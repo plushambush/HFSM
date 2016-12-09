@@ -409,7 +409,8 @@ end
 
 class HFSMState < HFSMDSL
 
-  attr_reader :current_state
+	attr_reader :current_state
+	attr_reader :timers	
 	
 	def initialize(name,parent)
 		@enter=nil
@@ -630,7 +631,7 @@ end
 
 
 class HFSMMachine < HFSMState
-	attr_reader :timers
+
 	
 	def initialize(name,parent,&block)
 		super
@@ -833,16 +834,16 @@ class HFSMContext < HFSMBase
 	end
 	
 	def start(timer,interval:nil,periodic:false,event:nil,payload:nil)
-		if @machine.timers.has_key?(timer)
-			@machine.timers[timer].start(interval,periodic,event,payload)
+		if @state.timers.has_key?(timer)
+			@state.timers[timer].start(interval,periodic,event,payload)
 		else
 			raise HFSMTimerException, "HFSM Error: Timer [%s] not found" % [timer]
 		end
 	end
 	
 	def stop(timer)
-		if @machine.timers.has_key?(timer)	
-			@machine.timers[timer].stop
+		if @state.timers.has_key?(timer)	
+			@state.timers[timer].stop
 		else
 			raise HFSMTimerException, "HFSM Error: Timer [%s] not found" % [timer]
 		end
@@ -850,8 +851,8 @@ class HFSMContext < HFSMBase
 	end
 		
 	def restart(timer)
-		if @machine.timers.has_key?(timer)	
-			@machine.timers[timer].restart
+		if @state.timers.has_key?(timer)	
+			@state.timers[timer].restart
 		else
 			raise HFSMTimerException, "HFSM Error: Timer [%s] not found" % [timer]
 		end
