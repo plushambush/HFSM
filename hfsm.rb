@@ -234,6 +234,18 @@ class HFSMDSL < HFSMObject
 	def _run
 	end
 	
+	def _do_idle
+	end
+	
+	def do_idle
+		each_element do |k,v|
+			v.do_idle
+		end
+		_do_idle
+	end
+
+	
+	
 end
 
 ####################################################################################################
@@ -402,6 +414,7 @@ class HFSMState < HFSMDSL
 	def initialize(name,parent)
 		@enter=nil
 		@exit=nil
+		@idle=nil
 		@current_state=nil
 		@initial_state=nil
 		@states={}
@@ -420,6 +433,10 @@ class HFSMState < HFSMDSL
 	
 	def setExit(&block)
 		@exit=block
+	end
+	
+	def setIdle(&block)
+		@idle=block
 	end
 	
 	def this_state
@@ -558,6 +575,10 @@ class HFSMState < HFSMDSL
 		self.setExit(&block)
 	end
 	
+	def idle(&block)
+		self.setIdle(&block)
+	end
+	
 	def on(eventname,expr=nil,&block)
 		newHandler(eventname,expr,&block)
 	end
@@ -592,6 +613,17 @@ class HFSMState < HFSMDSL
 	def initial
 		true
 	end
+	
+	def _do_idle
+		if @idle
+			context=HFSMContext.new(this_stage,this_actor,this_machine,this_state,HFSMEvent.create("",this_stage.name,this_actor.name,this_machine.name))
+			context.instance_eval(&@idle)
+		end
+		
+	end
+	
+	
+	
 		
 end
 
@@ -710,16 +742,14 @@ class HFSMActor < HFSMGenericEventProcessor
 		instantiate(key,self,supplied,&block)
 	end
 	
-	
-	def idle
+	def _do_idle
 		Thread.pass
 	end
-
 	def _run
 		Thread.new do
 			while true do
 				processQueue(blocking=false)
-				idle
+				do_idle
 			end
 		end
 	end
