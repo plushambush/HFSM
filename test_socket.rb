@@ -7,12 +7,12 @@ Thread.abort_on_exception=true
 class HFSMLineMachine < HFSMMachine
 	attr_accessor :buffer
 	
-	state "WaitLine" do
+	state "WaitingForLine" do
 		enter do
 			@machine.buffer=''
 		end
 		
-		on "Main.DataReceived" do
+		on "SocketMachine.DataReceived" do
 			lines=@event.data.lines()
 			lines.each do |line|
 				if line =~ /\r*\n$/
@@ -32,8 +32,8 @@ end
 class HFSMTCPServer < HFSMActor
 	attr_accessor :socket
 	attr_accessor :outbuf
-	machine "LineMachine",HFSMLineMachine
-	machine "Main" do
+
+	machine "SocketMachine" do
 		state "Unconfigured" do
 			enter do
 				puts "TCPServer started in unconfigured state"
@@ -72,11 +72,7 @@ class HFSMTCPServer < HFSMActor
 					end
 			end
 			
-			on "LineMachine.LineReceived" do
-				puts "Received line:#{@event.line}"
-				signal "Main.SendData",{:data=>"You said: #{@event.line}\n" }
-			end
-			
+		
 			on "SendData" do
 				@actor.outbuf+=@event.data
 			end
@@ -85,9 +81,6 @@ class HFSMTCPServer < HFSMActor
 				goto "Stopped"
 			end
 			
-			on "Ping" do
-				signal "SendData",{:data=>"Ping!\n"}
-			end
 		end
 		
 		state "Stopped" do
@@ -101,6 +94,20 @@ class HFSMTCPServer < HFSMActor
 end
 
 
+class HFSMTCPLineServer < HFSMTCPServer
+	machine "LineMachine",HFSMLineMachine	
+end
+
+
+class HFSMTCPEchoServer < HFSMTCPLineServer
+	machine "EchoMachine" do
+		state "Default" do
+			on "LineMachine.LineReceived" do
+				signal "SocketMachine.SendData", {:data=>"You said: #{@event.line}\n"}
+			end
+		end
+	end
+end
 
 
 class HFSMTCPServerFabric < HFSMActor
@@ -152,8 +159,8 @@ class SocketStage < HFSMStage
 				on "Listener.Connected" do
 					puts "Fabric: detected connection on socket #{@event.client_socket}"
 					newactorname="TCPServer%s" % [@event.client_socket.to_s]
-					@stage.actor newactorname,HFSMTCPServer
-					signal "%s.Main.Configure" % [newactorname],{:client_socket=>@event.client_socket}
+					@stage.actor newactorname,HFSMTCPEchoServer
+					signal "%s.SocketMachine.Configure" % [newactorname],{:client_socket=>@event.client_socket}
 				end
 			end
 		end	
