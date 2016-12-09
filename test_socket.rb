@@ -45,6 +45,7 @@ class HFSMTCPServer < HFSMActor
 		state "Active" do
 			enter do
 				puts "TCPServer configured"
+				@actor.socket.puts "Hello from TCP Server #{@actor.name}"
 			end	
 		end
 	end
@@ -71,40 +72,43 @@ class HFSMTCPServerFabric < HFSMActor
 				socket.listen(5)
 				@actor.socket=socket
 			end
-			state "Listen" do
-				enter do
-					puts "Entered Listen state"
-					begin
+			
+			leave do
+				puts "Closing socket"
+				@actor.socket.close
+			end
+			
+			idle do
+				begin
+					if not @actor.socket.closed?
 						client_socket, client_addrinfo=@actor.socket.accept_nonblock
 						signal "Connected",{:client_socket=>client_socket,:client_addrinfo=>client_addrinfo}
-						signal "ContinueListen"
-					rescue IO::EAGAINWaitReadable
-						signal "ContinueListen"
 					end
-				end
-				on "ContinueListen" do
-					goto "Listen"
+				rescue IO::EAGAINWaitReadable
 				end
 			end
+				
 		end
 	end
-	machine "Fabric" do
-		state "WaitConnect" do
-			on "Listener.Connected" do
-				puts "Fabric: detected connection on socket #{@event.client_socket}"
-				newactorname="TCPServer%s" % [@event.client_socket.to_s]
-				@stage.actor newactorname,HFSMTCPServer
-				signal "%s.Main.Configure" % [newactorname],{:client_socket=>@event.client_socket}
-			end
-		end
-	end
+
 end
 
 
 
 
 class SocketStage < HFSMStage
-	actor "SocketActor",HFSMTCPServerFabric
+	actor "SocketActor",HFSMTCPServerFabric do
+		machine "Fabric" do
+			state "WaitConnect" do
+				on "Listener.Connected" do
+					puts "Fabric: detected connection on socket #{@event.client_socket}"
+					newactorname="TCPServer%s" % [@event.client_socket.to_s]
+					@stage.actor newactorname,HFSMTCPServer
+					signal "%s.Main.Configure" % [newactorname],{:client_socket=>@event.client_socket}
+				end
+			end
+		end	
+	end
 end
 
 stage=SocketStage.new "SocketStage"
